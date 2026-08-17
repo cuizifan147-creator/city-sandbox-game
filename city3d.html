@@ -1,0 +1,4491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 城市建造游戏（骨架版）</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      overflow: hidden;
+    }
+
+    #topbar .title { font-size: 16px; color: #7dd3fc; }
+
+    /* 3D 场景容器 */
+    #game {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    #game canvas { display: block; cursor: crosshair; touch-action: none; }
+
+    /* ===== 触屏设备（手机）：加大按钮与面板可用性 ===== */
+    @media (pointer: coarse) {
+      .menu-btn { padding: 12px 20px; font-size: 16px; }
+      .tool-btn, .army-btn { padding: 14px 22px; font-size: 16px; }
+      #topbar { gap: 10px; padding: 10px; }
+      #status { font-size: 12px; max-width: 94%; }
+      .panel { max-height: 62vh; overflow-y: auto; }
+      #error-toast { font-size: 24px; }
+    }
+
+    /* ===== 顶部常驻栏：资金 + 人口 + 菜单按钮 ===== */
+    #topbar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 14px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      font-size: 15px;
+      font-weight: bold;
+      color: #e2e8f0;
+      flex-wrap: wrap;
+    }
+
+    #topbar .spacer { flex: 1; }
+
+    .menu-btn {
+      padding: 8px 16px;
+      border: 2px solid #475569;
+      border-radius: 6px;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .menu-btn:hover { border-color: #0ea5e9; }
+    .menu-btn.active { border-color: #0ea5e9; background: #0c4a6e; }
+
+    /* ===== 金钱收支明细悬浮框 ===== */
+    #money-tooltip {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 8px;
+      z-index: 30;
+      min-width: 260px;
+      padding: 10px 12px;
+      background: rgba(15, 23, 42, 0.97);
+      border: 1px solid #334155;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #cbd5e1;
+      font-weight: normal;
+    }
+
+    #money-tooltip.hidden { display: none; }
+
+    #money-tooltip .tt-head { font-weight: bold; color: #fbbf24; margin-bottom: 4px; }
+    #money-tooltip .tt-row { display: flex; justify-content: space-between; gap: 18px; }
+    #money-tooltip .tt-total { border-top: 1px solid #334155; margin-top: 4px; padding-top: 4px; font-weight: bold; }
+    #money-tooltip .tt-pos { color: #4ade80; }
+    #money-tooltip .tt-neg { color: #f87171; }
+
+    /* ===== 展开面板：建筑菜单 / 数据菜单（悬浮在画布上方） ===== */
+    .panel {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #334155;
+      border-radius: 8px;
+    }
+
+    #build-panel {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 96%;
+    }
+
+    #data-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 420px;
+      max-width: 96%;
+    }
+
+    #build-panel.hidden, #data-panel.hidden, #army-panel.hidden, #edu-panel.hidden { display: none; }
+
+    #army-panel {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      max-width: 96%;
+    }
+
+    #army-info { font-size: 14px; color: #cbd5e1; }
+
+    #edu-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 460px;
+      max-width: 96%;
+    }
+
+    .edu-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    #edu-info { font-size: 13px; color: #94a3b8; }
+
+    /* ===== 新手引导教程 ===== */
+    #tutorial {
+      position: absolute;
+      bottom: 56px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 35;
+      width: 520px;
+      max-width: 94%;
+      padding: 14px 16px;
+      background: rgba(15, 23, 42, 0.96);
+      border: 2px solid #fbbf24;
+      border-radius: 10px;
+      color: #e2e8f0;
+      pointer-events: none;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    }
+    #tutorial .tt-head {
+      font-weight: bold;
+      color: #fbbf24;
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+    #tutorial-text {
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 0 0 10px;
+    }
+    #tutorial-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    #tutorial-actions button { pointer-events: auto; }
+
+    #marquee {
+      position: absolute;
+      border: 1px solid #4ade80;
+      background: rgba(74, 222, 128, 0.15);
+      display: none;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    /* ===== 屏幕中间的大字错误提示 ===== */
+    #error-toast {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 40;
+      display: none;
+      max-width: 90%;
+      padding: 14px 28px;
+      background: rgba(127, 29, 29, 0.92);
+      border: 2px solid #f87171;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 30px;
+      font-weight: bold;
+      text-align: center;
+      pointer-events: none;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+      opacity: 1;
+      transition: opacity 0.4s;
+    }
+
+    .army-btn {
+      padding: 10px 18px;
+      border: 2px solid transparent;
+      border-radius: 6px;
+      font-size: 15px;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+      background: #16a34a;
+    }
+
+    .army-btn:hover { opacity: 0.85; }
+
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #cbd5e1;
+    }
+
+    .data-row span:first-child { font-weight: bold; color: #94a3b8; }
+
+    .tool-btn {
+      padding: 10px 18px;
+      border: 2px solid transparent;
+      border-radius: 6px;
+      font-size: 15px;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tool-btn:hover { opacity: 0.85; }
+
+    .tool-btn.selected {
+      border-color: #fff;
+      box-shadow: 0 0 8px rgba(14, 165, 233, 0.9);
+    }
+
+    #btn-road        { background: #64748b; }
+    #btn-gov         { background: #475569; }
+    #btn-residential { background: #22c55e; }
+    #btn-market      { background: #0ea5e9; }
+    #btn-restaurant  { background: #ef4444; }
+    #btn-clothing    { background: #ec4899; }
+    #btn-industrial  { background: #facc15; color: #1e293b; }
+    #btn-solar       { background: #f97316; }
+    #btn-coal        { background: #dc2626; }
+    #btn-barracks    { background: #365314; }
+    #btn-school      { background: #fbbf24; color: #1e293b; }
+    #btn-university  { background: #8b5cf6; }
+    #btn-farm        { background: #ca8a04; }
+    #btn-hospital    { background: #0d9488; }
+    #btn-wall        { background: #92400e; }
+    #btn-none        { background: #475569; }
+    #btn-demolish    { background: #b91c1c; }
+
+    #status {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      max-width: 96%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 6px 14px;
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: 6px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <!-- 顶部常驻栏：资金 + 人口常驻，其余数据进“数据”菜单 -->
+  <div id="topbar">
+    <span class="title">🏙️ 3D 城市</span>
+    <span id="hud-era">🏭 近现代</span>
+    <span id="hud-money">💰 金钱：3000</span>
+    <div id="money-tooltip" class="hidden"></div>
+    <span id="hud-pop">👥 人口：0</span>
+    <span class="spacer"></span>
+    <button id="btn-menu-build" class="menu-btn">🏗️ 建筑</button>
+    <button id="btn-menu-data" class="menu-btn">📊 数据</button>
+    <button id="btn-menu-army" class="menu-btn">🎖️ 军队</button>
+    <button id="btn-menu-edu" class="menu-btn">🎓 教育</button>
+    <button id="btn-menu-tutorial" class="menu-btn">📖 教程</button>
+    <button id="btn-undo" class="menu-btn">⏪ 撤销</button>
+    <button id="btn-save" class="menu-btn">💾 存档</button>
+    <button id="btn-load" class="menu-btn">📂 读档</button>
+    <button id="btn-fullscreen" class="menu-btn">⛶ 全屏</button>
+  </div>
+
+  <!-- 3D 场景容器：画布铺满 + 菜单/状态栏悬浮其上 -->
+  <div id="game">
+
+  <!-- 建筑菜单（点击“🏗️ 建筑”展开）：住宅/店铺/工业/道路等全部聚集在这里 -->
+  <div id="build-panel" class="panel hidden">
+    <button id="btn-road"        class="tool-btn selected" data-type="1">🛣️ 道路</button>
+    <button id="btn-gov"         class="tool-btn" data-type="14">🏛️ 政府大楼</button>
+    <button id="btn-residential" class="tool-btn" data-type="2">🏠 住宅区</button>
+    <button id="btn-market"      class="tool-btn" data-type="3">🛒 小型超市</button>
+    <button id="btn-restaurant"  class="tool-btn" data-type="7">🍜 饭店</button>
+    <button id="btn-clothing"    class="tool-btn" data-type="8">👗 服装店</button>
+    <button id="btn-industrial"  class="tool-btn" data-type="4">🏭 工业区</button>
+    <button id="btn-solar"       class="tool-btn" data-type="5">☀️ 太阳能板</button>
+    <button id="btn-coal"        class="tool-btn" data-type="6">🔥 火力发电站</button>
+    <button id="btn-barracks"    class="tool-btn" data-type="9">🎖️ 军营</button>
+    <button id="btn-school"      class="tool-btn" data-type="10">🏫 初级学堂</button>
+    <button id="btn-university"  class="tool-btn" data-type="11">🎓 大学</button>
+    <button id="btn-farm"        class="tool-btn" data-type="13">🌾 小麦农场</button>
+    <button id="btn-hospital"    class="tool-btn" data-type="16">🏥 医院</button>
+    <button id="btn-wall"        class="tool-btn" data-type="17">🧱 围墙</button>
+    <button id="btn-unlock-north" class="army-btn" style="background:#0e7490">🔓 北侧土地（2000元）</button>
+    <button id="btn-unlock-south" class="army-btn" style="background:#0e7490">🔓 南侧土地（2500元）</button>
+    <button id="btn-demolish"    class="tool-btn" data-type="demolish">🧨 拆除</button>
+    <button id="btn-none"        class="tool-btn" data-type="0">🚫 取消选择</button>
+  </div>
+
+  <!-- 数据菜单（点击“📊 数据”展开） -->
+  <div id="data-panel" class="panel hidden">
+    <div class="data-row"><span>⚡ 电力</span><span id="data-power">0 / 0 · 电力自足</span></div>
+    <div class="data-row"><span>🌾 食物</span><span id="data-food">存粮 0 / 200</span></div>
+    <div class="data-row"><span>🏥 健康</span><span id="data-health">生病 0 人</span></div>
+    <div class="data-row"><span>🛒 超市</span><span id="data-market">0 格</span></div>
+    <div class="data-row"><span>🍜 饭店</span><span id="data-restaurant">0 格</span></div>
+    <div class="data-row"><span>👗 服装店</span><span id="data-clothing">0 格</span></div>
+    <div class="data-row"><span>🏭 工业</span><span id="data-industrial">0 格（供货 +0 元/10秒）</span></div>
+    <div class="data-row"><span>📈 全城收入</span><span id="data-income">+0 元/10秒</span></div>
+    <div class="data-row"><span>🤖 AI 对手</span><span id="data-ai">金钱 3000</span></div>
+  </div>
+
+  <!-- 军队菜单（点击“🎖️ 军队”展开） -->
+  <div id="army-panel" class="panel hidden">
+    <button id="btn-recruit" class="army-btn">🪖 招募士兵（150元）</button>
+    <button id="btn-recruit-tank" class="army-btn" style="background:#365314">🛡️ 招募坦克（600元）</button>
+    <span id="army-info">士兵：0 · 军费 0.8 元/秒/兵</span>
+  </div>
+
+  <!-- 教育菜单（点击“🎓 教育”展开） -->
+  <div id="edu-panel" class="panel hidden">
+    <label class="edu-label">💰 学费：<input type="range" id="tuition-slider" min="0" max="10" step="0.5" value="0"><span id="tuition-value">0 元</span></label>
+    <span id="edu-info">科技值 0 · 学堂 0 栋 · 大学 0 栋 · 学生 0 · 毕业池 0 · 大学生 0 · 人才 0</span>
+  </div>
+
+  <!-- 新手引导教程 -->
+  <div id="tutorial" class="hidden">
+    <div class="tt-head">🎓 新手引导</div>
+    <p id="tutorial-text"></p>
+    <div id="tutorial-actions">
+      <button id="btn-tutorial-skip" class="menu-btn">跳过教程</button>
+      <button id="btn-tutorial-next" class="menu-btn">下一步</button>
+    </div>
+  </div>
+
+  <!-- 框选矩形（按住左键拖动框选军队） -->
+  <div id="marquee"></div>
+
+  <!-- 错误提示：屏幕中间的大字 -->
+  <div id="error-toast"></div>
+
+    <p id="status">电脑：左键铺设 · 右键拆除 · WASD/QE/RF 视角 · Ctrl+Z 撤销　|　手机：单指操作 · 双指缩放旋转平移 · 🧨 按钮拆除</p>
+  </div>
+
+  <!-- 本地库文件（r128 UMD 版，file:// 直接可用，无需联网） -->
+  <script src="lib/three.min.js"></script>
+  <!-- 模组 API（必须在游戏主体脚本之前加载） -->
+  <script src="js/game-api.js"></script>
+  <script>
+    // ========== 网格数据（与 2D 版一致，后续可复用整套规则系统） ==========
+    const GRID_COLS = 64;   // 地图列数（开源版再次扩大）
+    const GRID_ROWS = 72;   // 地图行数（含南北两片可解锁的扩展土地）
+    const CELL = 10;        // 每格 10 个 3D 单位
+
+    // ========== 可解锁的扩展土地：主城南北各 12 行，花钱解锁 ==========
+    const EXP_ROWS = 12;                     // 每片扩展土地的行数
+    const CITY_R0 = EXP_ROWS;                // 主城区起始行（12）
+    const CITY_R1 = GRID_ROWS - EXP_ROWS;    // 主城区结束行（60）
+    const expansions = {
+      north: { r0: 0, r1: EXP_ROWS, locked: true, cost: 2000, label: '北侧' },
+      south: { r0: CITY_R1, r1: GRID_ROWS, locked: true, cost: 2500, label: '南侧' },
+    };
+    function isLockedRow(r) {
+      if (expansions.north.locked && r < CITY_R0) return expansions.north;
+      if (expansions.south.locked && r >= CITY_R1) return expansions.south;
+      return null;
+    }
+
+    const TILE = {
+      EMPTY: 0, ROAD: 1, RESIDENTIAL: 2,
+      MARKET: 3,      // 小型超市
+      INDUSTRIAL: 4,
+      SOLAR: 5, COAL: 6,
+      RESTAURANT: 7,  // 饭店
+      CLOTHING: 8,    // 服装店
+      BARRACKS: 9,    // 军营（士兵出征点）
+      SCHOOL: 10,     // 初级学堂
+      UNIVERSITY: 11, // 大学（占 3×3 校园）
+      CAMPUS: 12,     // 大学校园用地（不可单独建造）
+      FARM: 13,       // 小麦农场
+      GOV: 14,        // 政府大楼（3×3，开局自选位置）
+      GOVYARD: 15,    // 政府用地
+      HOSPITAL: 16,   // 医院
+      WALL: 17,       // 围墙
+    };
+    const TILE_NAMES = {
+      [TILE.EMPTY]: '空地', [TILE.ROAD]: '道路', [TILE.RESIDENTIAL]: '住宅区',
+      [TILE.MARKET]: '小型超市', [TILE.INDUSTRIAL]: '工业区',
+      [TILE.SOLAR]: '太阳能板', [TILE.COAL]: '火力发电站',
+      [TILE.RESTAURANT]: '饭店', [TILE.CLOTHING]: '服装店',
+      [TILE.BARRACKS]: '军营', [TILE.SCHOOL]: '初级学堂', [TILE.UNIVERSITY]: '大学',
+      [TILE.CAMPUS]: '大学校园',
+      [TILE.FARM]: '小麦农场',
+      [TILE.GOV]: '政府大楼', [TILE.GOVYARD]: '政府用地',
+      [TILE.HOSPITAL]: '医院', [TILE.WALL]: '围墙',
+    };
+
+    // 地图状态与每格的 3D 模型引用
+    const map = [];
+    const tileMeshes = [];
+    for (let r = 0; r < GRID_ROWS; r++) {
+      map.push(new Array(GRID_COLS).fill(TILE.EMPTY));
+      tileMeshes.push(new Array(GRID_COLS).fill(null));
+    }
+
+    // ========== AI 对手：旁边同样大小的地图（AI 自己慢慢发展经济） ==========
+    const MAP_GAP = 20;                              // 两张地图之间的间隔
+    const AI_OFFSET_X = GRID_COLS * CELL + MAP_GAP;  // AI 地图的 x 偏移
+    const aiMap = [];                                // AI 地图状态
+    const aiHp = [];                                 // AI 建筑血量（军队攻打用）
+    const aiTileMeshes = [];                         // AI 每格的 3D 模型引用
+    const aiOwner = [];                              // 'ai' | 'player'（占领后归我方）
+    const aiCapture = [];                            // 占领进度 0~1
+    let aiMoney = 3000;                              // AI 的金钱
+    let population = 0;   // 实际人口：随住房增长，食物不足时停止增长（饥荒）
+    const mapHp = [];                                // 我方建筑血量（围墙被坦克攻击用）
+    for (let r = 0; r < GRID_ROWS; r++) {
+      aiMap.push(new Array(GRID_COLS).fill(TILE.EMPTY));
+      aiHp.push(new Array(GRID_COLS).fill(0));
+      aiTileMeshes.push(new Array(GRID_COLS).fill(null));
+      aiOwner.push(new Array(GRID_COLS).fill('ai'));
+      aiCapture.push(new Array(GRID_COLS).fill(0));
+      mapHp.push(new Array(GRID_COLS).fill(0));
+    }
+
+    let selectedType = TILE.ROAD;
+    const statusEl = document.getElementById('status');
+
+    // 屏幕中间的大字错误提示（1.8 秒后淡出）
+    const errorToastEl = document.getElementById('error-toast');
+    let errorToastTimer = null;
+    function showError(msg) {
+      errorToastEl.textContent = msg;
+      errorToastEl.style.opacity = '1';
+      errorToastEl.style.display = 'block';
+      if (errorToastTimer) clearTimeout(errorToastTimer);
+      errorToastTimer = setTimeout(() => {
+        errorToastEl.style.opacity = '0';
+        setTimeout(() => { errorToastEl.style.display = 'none'; }, 450);
+      }, 1800);
+    }
+    const DEFAULT_HINT = '电脑：左键铺设 · 右键拆除 · WASD/QE/RF 视角 · Ctrl+Z 撤销　|　手机：单指操作 · 双指缩放旋转平移 · 🧨 按钮拆除';
+
+    // ========== 3D 场景 ==========
+    const container = document.getElementById('game');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x8ecae6);   // 明亮的白天天空
+    scene.fog = new THREE.Fog(0x9ecbe0, 700, 3000);   // 雾与天空同色，远景自然融入
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 1, 4000);
+    camera.position.set(100, 160, 200);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+    container.appendChild(renderer.domElement);
+
+    // 画布自适应窗口大小（全屏布局，窗口缩放时跟随）
+    function resizeRenderer() {
+      const w = container.clientWidth || window.innerWidth;
+      const h = container.clientHeight || window.innerHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    resizeRenderer();
+    window.addEventListener('resize', resizeRenderer);
+
+    // 灯光：环境光 + 平行光（模拟太阳）
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(150, 250, 100);
+    scene.add(sun);
+
+    // 小太阳：柔和的日轮（静态白天，不天黑）
+    (function addSunSprite() {
+      const cnv = document.createElement('canvas');
+      cnv.width = cnv.height = 128;
+      const g = cnv.getContext('2d');
+      const grad = g.createRadialGradient(64, 64, 8, 64, 64, 64);
+      grad.addColorStop(0, 'rgba(255, 250, 210, 1)');
+      grad.addColorStop(0.35, 'rgba(255, 235, 150, 0.9)');
+      grad.addColorStop(1, 'rgba(255, 230, 140, 0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
+      const tex = new THREE.CanvasTexture(cnv);
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, fog: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(190, 190, 1);
+      sprite.position.set(900, 1400, 450);
+      scene.add(sprite);
+    })();
+
+    // 土地质感地面（像素噪点纹理：草地与泥土色块）
+    function makeGroundTexture(palette) {
+      const size = 64;
+      const cnv = document.createElement('canvas');
+      cnv.width = cnv.height = size;
+      const g = cnv.getContext('2d');
+      g.fillStyle = palette[0];
+      g.fillRect(0, 0, size, size);
+      for (let i = 0; i < 1800; i++) {
+        g.fillStyle = palette[Math.floor(Math.random() * palette.length)];
+        g.fillRect(Math.floor(Math.random() * size), Math.floor(Math.random() * size), 2, 2);
+      }
+      const tex = new THREE.CanvasTexture(cnv);
+      tex.magFilter = THREE.NearestFilter;   // 像素风：放大保持方块感
+      tex.minFilter = THREE.NearestFilter;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(GRID_COLS / 2, GRID_ROWS / 2);
+      return tex;
+    }
+
+    // 我方地面：草地 + 泥土（鼠标拾取目标平面之一）
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(GRID_COLS * CELL, GRID_ROWS * CELL),
+      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#7fb069', '#8fbc6f', '#6d9e57', '#a8804f', '#96744a']) })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set((GRID_COLS * CELL) / 2, 0, (GRID_ROWS * CELL) / 2);
+    scene.add(ground);
+
+    // AI 地面：更干旱的土色（表示对方领土）
+    const aiGround = new THREE.Mesh(
+      new THREE.PlaneGeometry(GRID_COLS * CELL, GRID_ROWS * CELL),
+      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#b8956a', '#a8804f', '#c0a068', '#8f6f47', '#9c7b52']) })
+    );
+    aiGround.rotation.x = -Math.PI / 2;
+    aiGround.position.set(AI_OFFSET_X + (GRID_COLS * CELL) / 2, 0, (GRID_ROWS * CELL) / 2);
+    scene.add(aiGround);
+
+    // 外层大地：包裹全部可玩区域与视野，永远看不到虚空
+    const outerTerrain = new THREE.Mesh(
+      new THREE.PlaneGeometry(5000, 5000),
+      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#8fbc6f', '#7fb069', '#6d9e57', '#a8804f', '#96744a']) })
+    );
+    outerTerrain.material.map.repeat.set(90, 90);
+    outerTerrain.rotation.x = -Math.PI / 2;
+    outerTerrain.position.set(AI_OFFSET_X / 2 + (GRID_COLS * CELL) / 2, -0.06, (GRID_ROWS * CELL) / 2);
+    scene.add(outerTerrain);
+
+    // 网格线：我方 + AI 各一套
+    function addGridLines(offsetX) {
+      const pts = [];
+      for (let c = 0; c <= GRID_COLS; c++) pts.push(offsetX + c * CELL, 0.05, 0, offsetX + c * CELL, 0.05, GRID_ROWS * CELL);
+      for (let r = 0; r <= GRID_ROWS; r++) pts.push(offsetX, 0.05, r * CELL, offsetX + GRID_COLS * CELL, 0.05, r * CELL);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      scene.add(new THREE.LineSegments(
+        geo,
+        new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.4 })
+      ));
+    }
+    addGridLines(0);
+    addGridLines(AI_OFFSET_X);
+
+    // 边境墙：分隔两片领土（视觉标识，不影响移动）
+    const borderWall = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 2.5, GRID_ROWS * CELL),
+      new THREE.MeshLambertMaterial({ color: 0x7f1d1d })
+    );
+    borderWall.position.set(GRID_COLS * CELL + MAP_GAP / 2, 1.25, (GRID_ROWS * CELL) / 2);
+    scene.add(borderWall);
+
+    // 未解锁土地：暗色覆盖 + 红色边框 + 🔒 锁标记
+    const lockGroups = {};
+    function buildLockOverlay(zStart) {
+      const g = new THREE.Group();
+      const w = GRID_COLS * CELL;
+      const h = EXP_ROWS * CELL;
+      const cover = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ color: 0x1e293b, transparent: true, opacity: 0.55, depthWrite: false })
+      );
+      cover.rotation.x = -Math.PI / 2;
+      cover.position.set(w / 2, 0.12, zStart + h / 2);
+      g.add(cover);
+      const borderMat = new THREE.MeshBasicMaterial({ color: 0xdc2626 });
+      const t = 1.2;
+      const b1 = new THREE.Mesh(new THREE.BoxGeometry(w, t, t), borderMat);
+      b1.position.set(w / 2, t / 2, zStart);
+      const b2 = b1.clone();
+      b2.position.z = zStart + h;
+      const b3 = new THREE.Mesh(new THREE.BoxGeometry(t, t, h), borderMat);
+      b3.position.set(0, t / 2, zStart + h / 2);
+      const b4 = b3.clone();
+      b4.position.x = w;
+      g.add(b1, b2, b3, b4);
+      for (let cx = 20; cx < w; cx += 42) {
+        const pole = new THREE.Mesh(new THREE.BoxGeometry(0.5, 6, 0.5), new THREE.MeshLambertMaterial({ color: 0xf8fafc }));
+        pole.position.set(cx, 3, zStart + h / 2);
+        const lock = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 2.6), new THREE.MeshLambertMaterial({ color: 0xdc2626 }));
+        lock.position.set(cx, 7, zStart + h / 2);
+        g.add(pole, lock);
+      }
+      g.visible = false;
+      scene.add(g);
+      return g;
+    }
+    lockGroups.north = buildLockOverlay(0);
+    lockGroups.south = buildLockOverlay(CITY_R1 * CELL);
+    lockGroups.north.visible = true;
+    lockGroups.south.visible = true;
+
+    // 粮仓地标：我方西北角外 + AI 东北角外（麦堆随存粮增高）
+    function buildGranaryVisual() {
+      const g = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(9, 0.2, 6), new THREE.MeshLambertMaterial({ color: 0x8b6f47 }));
+      base.position.y = 0.1;
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(3, 6, 3), new THREE.MeshLambertMaterial({ color: 0xa16207 }));
+      tower.position.set(3, 3, 0);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.5, 3.6), new THREE.MeshLambertMaterial({ color: 0x713f12 }));
+      roof.position.set(3, 6.3, 0);
+      const mound = new THREE.Mesh(new THREE.BoxGeometry(4, 1, 4), new THREE.MeshLambertMaterial({ color: 0xd9c75b }));
+      mound.position.set(-1.5, 0.5, 0);
+      g.add(base, tower, roof, mound);
+      g.userData.mound = mound;
+      return g;
+    }
+    const playerGranary = buildGranaryVisual();
+    playerGranary.position.set(-5, 0, -5);
+    scene.add(playerGranary);
+    const aiGranary = buildGranaryVisual();
+    aiGranary.position.set(AI_OFFSET_X + GRID_COLS * CELL + 5, 0, -5);
+    scene.add(aiGranary);
+
+    // ========== 相机控制：WASD 移动 + QE 旋转 + RF 俯仰 + 滚轮缩放 ==========
+    // 全部用键盘和滚轮，鼠标按键完全留给游戏（左键铺设 / 右键拆除）
+    const cam = {
+      yaw: Math.PI / 4,        // 环绕角度
+      pitch: Math.PI / 3.4,    // 俯仰角（0=平视，越大越接近俯视）
+      dist: 620,               // 相机到目标点的距离（大地图拉远）
+      target: new THREE.Vector3((GRID_COLS * CELL) / 2, 0, (GRID_ROWS * CELL) / 2),
+    };
+    const CAM_MIN_PITCH = 0.3;    // 抬高最低俯角，防止贴地穿模视角
+    const CAM_MAX_PITCH = 1.35;
+    const CAM_MIN_DIST = 150;     // 拉近下限，避免相机怼进建筑
+    const CAM_MAX_DIST = 2200;
+
+    // 根据 cam 状态刷新相机位置与朝向
+    function applyCamera() {
+      camera.position.set(
+        cam.target.x + cam.dist * Math.cos(cam.pitch) * Math.sin(cam.yaw),
+        cam.target.y + cam.dist * Math.sin(cam.pitch),
+        cam.target.z + cam.dist * Math.cos(cam.pitch) * Math.cos(cam.yaw)
+      );
+      camera.lookAt(cam.target);
+    }
+    applyCamera();
+
+    // 按键状态（用 Set 记录按住的键，支持同时按多个）
+    const keys = new Set();
+    window.addEventListener('keydown', (e) => {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF'].includes(e.code)) {
+        keys.add(e.code);
+        e.preventDefault();   // 防止 W/S 等按键滚动页面
+      }
+    });
+    window.addEventListener('keyup', (e) => keys.delete(e.code));
+    window.addEventListener('blur', () => keys.clear());   // 窗口失焦时清空按键，防止“卡键”
+
+    // 滚轮缩放（注意 passive:false 才能 preventDefault）
+    renderer.domElement.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      cam.dist = Math.min(CAM_MAX_DIST, Math.max(CAM_MIN_DIST, cam.dist * (1 + e.deltaY * 0.001)));
+    }, { passive: false });
+
+    // 每帧根据按住的键移动相机（在 animate 中调用）
+    function moveCamera(dt) {
+      const panSpeed = 130 * dt;   // WASD 平移速度
+      const rotSpeed = 1.6 * dt;   // QE/RF 旋转速度
+
+      // 视线在地面上的前进方向（相机 → 目标点的水平投影）
+      const fx = -Math.sin(cam.yaw);
+      const fz = -Math.cos(cam.yaw);
+      // 右方向（前进方向逆时针旋转 90°）
+      const rx = -fz;
+      const rz = fx;
+
+      if (keys.has('KeyW')) { cam.target.x += fx * panSpeed; cam.target.z += fz * panSpeed; }
+      if (keys.has('KeyS')) { cam.target.x -= fx * panSpeed; cam.target.z -= fz * panSpeed; }
+      if (keys.has('KeyD')) { cam.target.x += rx * panSpeed; cam.target.z += rz * panSpeed; }
+      if (keys.has('KeyA')) { cam.target.x -= rx * panSpeed; cam.target.z -= rz * panSpeed; }
+      if (keys.has('KeyQ')) { cam.yaw -= rotSpeed; }
+      if (keys.has('KeyE')) { cam.yaw += rotSpeed; }
+      if (keys.has('KeyR')) { cam.pitch = Math.min(CAM_MAX_PITCH, cam.pitch + rotSpeed); }
+      if (keys.has('KeyF')) { cam.pitch = Math.max(CAM_MIN_PITCH, cam.pitch - rotSpeed); }
+
+      // 目标点限制在两片地图周边，避免飞出太远
+      cam.target.x = Math.max(-100, Math.min(AI_OFFSET_X + GRID_COLS * CELL + 100, cam.target.x));
+      cam.target.z = Math.max(-100, Math.min(GRID_ROWS * CELL + 100, cam.target.z));
+    }
+
+    // ========== 建筑立体模型 ==========
+    // 模组方块建造器注册表（GameMod.registerTile 会写入这里）
+    const MOD_TILE_BUILDERS = {};
+    const BUILDING_STYLE = {
+      [TILE.RESIDENTIAL]: { h: 8,   color: 0x22c55e },   // 绿盒子
+      [TILE.MARKET]:      { h: 7,   color: 0x0ea5e9 },   // 小型超市：蓝色店铺
+      [TILE.INDUSTRIAL]:  { h: 10,  color: 0xfacc15 },   // 黄色厂房
+      [TILE.SOLAR]:       { h: 1,   color: 0xf97316 },   // 橙色薄板
+      [TILE.COAL]:        { h: 14,  color: 0xdc2626 },   // 红色电站 + 烟囱
+      [TILE.RESTAURANT]:  { h: 6,   color: 0xef4444 },   // 饭店：红色门店
+      [TILE.CLOTHING]:    { h: 7,   color: 0xec4899 },   // 服装店：粉色门店
+      [TILE.BARRACKS]:    { h: 8,   color: 0x365314 },   // 军营：军绿色
+      [TILE.SCHOOL]:      { h: 7,   color: 0xfbbf24 },   // 初级学堂：金色
+      [TILE.UNIVERSITY]:  { h: 10,  color: 0x8b5cf6 },   // 大学：紫色（占 3×3）
+      [TILE.CAMPUS]:      { h: 1,   color: 0x86efac },   // 校园用地
+      [TILE.FARM]:        { h: 1,   color: 0xd9c75b },   // 小麦农场
+      [TILE.GOV]:         { h: 10,  color: 0x475569 },   // 政府大楼
+      [TILE.GOVYARD]:     { h: 1,   color: 0x94a3b8 },   // 政府用地
+      [TILE.HOSPITAL]:    { h: 5,   color: 0xf8fafc },   // 医院
+      [TILE.WALL]:        { h: 3,   color: 0x92400e },   // 围墙
+    };
+
+    // 综合道路：中间车道 + 两侧人行道；相邻道路共享一侧时，该侧并成宽阔沥青路面
+    function createRoadModel(r, c, isAI) {
+      const theMap = isAI ? aiMap : map;
+      const armW = 4;                              // 车道宽度
+      const cornerSize = (CELL - armW) / 2;        // 3：人行道方块边长
+      const cornerOff = (armW + cornerSize) / 2;   // 3.5：人行道中心偏移
+      const group = new THREE.Group();
+
+      // 四周是否连着道路（连着的那侧不铺人行道，改为连续沥青）
+      const roadN = r > 0 && theMap[r - 1][c] === TILE.ROAD;
+      const roadS = r < GRID_ROWS - 1 && theMap[r + 1][c] === TILE.ROAD;
+      const roadW = c > 0 && theMap[r][c - 1] === TILE.ROAD;
+      const roadE = c < GRID_COLS - 1 && theMap[r][c + 1] === TILE.ROAD;
+
+      // 沥青十字：东西、南北两条车道
+      const asphalt = new THREE.MeshLambertMaterial({ color: 0x475569 });
+      const vertical = new THREE.Mesh(new THREE.BoxGeometry(armW, 0.25, CELL), asphalt);
+      vertical.position.y = 0.125;
+      const horizontal = new THREE.Mesh(new THREE.BoxGeometry(CELL, 0.25, armW), asphalt);
+      horizontal.position.y = 0.125;
+      group.add(vertical, horizontal);
+
+      // 靠道路的一侧：铺沥青填补（与邻居车道连成宽阔路面）
+      const fill = new THREE.MeshLambertMaterial({ color: 0x475569 });
+      const fillCorners = [];
+      if (roadN && roadW) fillCorners.push([-1, -1]);
+      if (roadN && roadE) fillCorners.push([1, -1]);
+      if (roadS && roadE) fillCorners.push([1, 1]);
+      if (roadS && roadW) fillCorners.push([-1, 1]);
+      for (const [sx, sz] of fillCorners) {
+        const f = new THREE.Mesh(new THREE.BoxGeometry(cornerSize, 0.25, cornerSize), fill);
+        f.position.set(sx * cornerOff, 0.125, sz * cornerOff);
+        group.add(f);
+      }
+
+      // 人行道：只在没有道路邻居的一侧保留
+      const sidewalk = new THREE.MeshLambertMaterial({ color: 0xcbd5e1 });
+      const sideCorners = [];
+      if (!roadN && !roadW) sideCorners.push([-1, -1]);
+      if (!roadN && !roadE) sideCorners.push([1, -1]);
+      if (!roadS && !roadE) sideCorners.push([1, 1]);
+      if (!roadS && !roadW) sideCorners.push([-1, 1]);
+      for (const [sx, sz] of sideCorners) {
+        const corner = new THREE.Mesh(new THREE.BoxGeometry(cornerSize, 0.5, cornerSize), sidewalk);
+        corner.position.set(sx * cornerOff, 0.25, sz * cornerOff);
+        group.add(corner);
+      }
+
+      // 路缘石：只在没有道路邻居的一侧（分段避开交叉口）
+      const curb = new THREE.MeshLambertMaterial({ color: 0x334155 });
+      const curbOff = armW / 2 + 0.15;
+      if (!roadW) {
+        for (const sz of [-3.5, 3.5]) {
+          const cb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 3), curb);
+          cb.position.set(-curbOff, 0.17, sz);
+          group.add(cb);
+        }
+      }
+      if (!roadE) {
+        for (const sz of [-3.5, 3.5]) {
+          const cb = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 3), curb);
+          cb.position.set(curbOff, 0.17, sz);
+          group.add(cb);
+        }
+      }
+      if (!roadN) {
+        for (const sx of [-3.5, 3.5]) {
+          const cb = new THREE.Mesh(new THREE.BoxGeometry(3, 0.34, 0.3), curb);
+          cb.position.set(sx, 0.17, -curbOff);
+          group.add(cb);
+        }
+      }
+      if (!roadS) {
+        for (const sx of [-3.5, 3.5]) {
+          const cb = new THREE.Mesh(new THREE.BoxGeometry(3, 0.34, 0.3), curb);
+          cb.position.set(sx, 0.17, curbOff);
+          group.add(cb);
+        }
+      }
+
+      // 车道白色虚线
+      const dash = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+      for (const dz of [-3.4, 3.4]) {
+        const d = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.04, 1.6), dash);
+        d.position.set(0, 0.28, dz);
+        group.add(d);
+      }
+      for (const dx of [-3.4, 3.4]) {
+        const d = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.25), dash);
+        d.position.set(dx, 0.28, 0);
+        group.add(d);
+      }
+
+      group.position.set(c * CELL + CELL / 2, 0, r * CELL + CELL / 2);
+      return group;
+    }
+
+    // ========== 像素风建筑：用小块“积木”（体素）拼出真实模样 ==========
+    // 积木助手：在 parent 上放一块 (w,h,d) 的彩色方块，可选绕 x 轴倾斜 rx 弧度
+    function vox(parent, w, h, d, color, x, y, z, rx = 0) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshLambertMaterial({ color })
+      );
+      m.position.set(x, y, z);
+      if (rx) m.rotation.x = rx;
+      parent.add(m);
+      return m;
+    }
+
+    // 公寓楼：米色墙体 + 像素窗 + 单元门
+    function buildResidentialCell(parent) {
+      vox(parent, 9.4, 7.5, 9.4, 0xd9c7a3, 0, 3.75, 0);            // 墙体
+      vox(parent, 9.8, 0.6, 9.8, 0x78716c, 0, 7.8, 0);             // 檐口
+      vox(parent, 9.8, 0.4, 9.8, 0x94a3b8, 0, 8.3, 0);             // 屋顶
+      const win = 0x1e3a5f;
+      for (const [wx, wz] of [[-2.6, 4.6], [0, 4.6], [2.6, 4.6]]) {   // 正面窗
+        for (let i = 0; i < 2; i++) {
+          vox(parent, 1.3, 1.4, 0.1, win, wx, 1.8 + i * 2.2, wz);
+        }
+      }
+      for (const [wx, wz] of [[4.6, -2.6], [4.6, 0], [4.6, 2.6]]) {   // 侧面窗
+        for (let i = 0; i < 2; i++) {
+          vox(parent, 0.1, 1.4, 1.3, win, wz, 1.8 + i * 2.2, wx);
+        }
+      }
+      vox(parent, 1.6, 2.2, 0.1, 0x78350f, -2.6, 1.1, 4.6);        // 单元门
+      vox(parent, 1.6, 2.2, 0.1, 0x78350f, 2.6, 1.1, 4.6);
+    }
+
+    // 小型超市：白墙 + 蓝招牌 + 橱窗 + 屋顶立牌
+    function buildMarket(parent) {
+      vox(parent, 9.2, 3.4, 9.2, 0xf8fafc, 0, 1.7, 0);
+      vox(parent, 9.2, 0.7, 0.15, 0x0ea5e9, 0, 2.9, 4.5);           // 蓝招牌
+      vox(parent, 9.2, 1.6, 0.1, 0x0c4a6e, 0, 0.9, 4.55);          // 橱窗
+      vox(parent, 1.8, 2.0, 0.1, 0x1e293b, 0, 1.0, 4.55);          // 门
+      vox(parent, 9.6, 0.35, 9.6, 0x64748b, 0, 3.55, 0);           // 屋顶
+      vox(parent, 0.3, 2.6, 0.3, 0x334155, 0, 5.0, -1.5);          // 立牌杆
+      vox(parent, 4.0, 1.0, 0.2, 0x0ea5e9, 0, 6.2, -1.5);          // 立牌
+    }
+
+    // 饭店：暖白墙 + 红雨棚 + 红顶 + 烟囱
+    function buildRestaurant(parent) {
+      vox(parent, 9.2, 3.6, 9.2, 0xfef2f2, 0, 1.8, 0);
+      vox(parent, 9.2, 1.0, 0.2, 0xdc2626, 0, 2.5, 4.5);           // 红雨棚
+      vox(parent, 9.2, 1.6, 0.1, 0x7c2d12, 0, 0.9, 4.55);          // 橱窗
+      vox(parent, 1.6, 2.0, 0.1, 0x450a0a, 0, 1.0, 4.55);          // 门
+      vox(parent, 9.6, 0.35, 9.6, 0x7f1d1d, 0, 3.75, 0);           // 红顶
+      vox(parent, 0.8, 2.0, 0.8, 0x57534e, 2.5, 4.6, -2.5);        // 烟囱
+      vox(parent, 0.8, 0.4, 0.8, 0x44403c, 2.5, 5.6, -2.5);        // 烟囱帽
+    }
+
+    // 服装店：粉墙 + 粉白条纹遮阳篷
+    function buildClothing(parent) {
+      vox(parent, 9.2, 3.4, 9.2, 0xfdf2f8, 0, 1.7, 0);
+      vox(parent, 9.2, 0.8, 0.2, 0xec4899, 0, 2.6, 4.5);           // 粉招牌
+      vox(parent, 9.2, 1.6, 0.1, 0x831843, 0, 0.9, 4.55);          // 橱窗
+      vox(parent, 1.6, 2.0, 0.1, 0x500724, 0, 1.0, 4.55);          // 门
+      vox(parent, 9.6, 0.35, 9.6, 0x9d174d, 0, 3.55, 0);           // 屋顶
+      for (let i = 0; i < 5; i++) {
+        vox(parent, 1.7, 0.25, 1.2, i % 2 ? 0xfdf2f8 : 0xec4899, -3.4 + i * 1.7, 3.0, 3.6);
+      }
+    }
+
+    // 工业区：灰厂房 + 锯齿屋顶 + 烟囱 + 大门
+    function buildIndustry(parent) {
+      vox(parent, 9.2, 5.0, 9.2, 0x94a3b8, 0, 2.5, 0);            // 厂房
+      vox(parent, 3.4, 2.2, 0.1, 0x1e293b, 0, 1.1, 4.55);          // 大门
+      vox(parent, 9.2, 0.5, 0.4, 0x64748b, 0, 5.2, 4.2);           // 女儿墙
+      for (let i = 0; i < 3; i++) {                                // 锯齿屋顶
+        vox(parent, 9.2, 1.6, 1.2, 0x475569, 0, 5.9, -2.4 + i * 2.4, 0.35);
+      }
+      vox(parent, 0.9, 5.0, 0.9, 0x57534e, -3.0, 7.4, -3.0);       // 烟囱
+      vox(parent, 1.1, 0.5, 1.1, 0x44403c, -3.0, 10.0, -3.0);      // 烟囱帽
+    }
+
+    // 太阳能板：倾斜的蓝色光伏板 + 支架
+    function buildSolar(parent) {
+      vox(parent, 8.6, 0.15, 8.6, 0x334155, 0, 0.08, 0);           // 基座
+      for (const [px, pz] of [[-2.3, -2.3], [2.3, -2.3], [-2.3, 2.3], [2.3, 2.3]]) {
+        vox(parent, 3.8, 0.08, 3.6, 0x1d4ed8, px, 1.0, pz, 0.5);   // 光伏板（倾斜）
+        vox(parent, 0.2, 1.2, 0.2, 0x475569, px + 1.5, 0.6, pz + 1.5);   // 支架
+      }
+    }
+
+    // 火力发电站：深红厂房 + 红白条纹大烟囱
+    function buildCoalPlant(parent) {
+      vox(parent, 9.2, 7.0, 9.2, 0x7f1d1d, 0, 3.5, 0);             // 主厂房
+      vox(parent, 9.6, 0.5, 9.6, 0x334155, 0, 7.5, 0);             // 屋顶
+      vox(parent, 3.0, 1.6, 0.1, 0x1e293b, -2, 0.8, 4.55);         // 门
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 1.2, 1.2, 0.1, 0x1e3a5f, -3.4 + i * 2.3, 4.6, 4.55);   // 窗
+      }
+      for (let i = 0; i < 5; i++) {                                // 红白条纹烟囱
+        vox(parent, 2.2, 3.0, 2.2, i % 2 ? 0xf8fafc : 0xdc2626, 2.6, 8.0 + i * 3.0, -2.6);
+      }
+      vox(parent, 2.6, 0.6, 2.6, 0x334155, 2.6, 23.0, -2.6);       // 烟囱口
+    }
+
+    // 军营：军绿营房 + 瞭望塔 + 绿旗
+    function buildBarracks(parent) {
+      vox(parent, 9.2, 3.4, 9.2, 0x3f6212, 0, 1.7, 0);
+      vox(parent, 9.6, 0.4, 9.6, 0x365314, 0, 3.8, 0);
+      vox(parent, 2.0, 2.2, 0.1, 0x1a2e05, 0, 1.1, 4.55);
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 1.0, 1.0, 0.1, 0x1a2e05, -3.4 + i * 2.3, 2.2, 4.55);
+      }
+      vox(parent, 1.8, 5.5, 1.8, 0x4d7c0f, 3.6, 2.75, -3.6);       // 瞭望塔
+      vox(parent, 2.4, 0.4, 2.4, 0x365314, 3.6, 5.7, -3.6);        // 塔顶
+      vox(parent, 0.15, 5.0, 0.15, 0xf8fafc, -3.0, 6.7, 3.0);      // 旗杆
+      vox(parent, 1.4, 0.9, 0.1, 0x16a34a, -2.2, 8.9, 3.0);        // 绿旗
+    }
+
+    // 初级学堂：黄墙 + 红屋顶 + 钟表 + 红旗
+    function buildSchool(parent) {
+      vox(parent, 9.2, 5.0, 9.2, 0xfef9c3, 0, 2.5, 0);
+      vox(parent, 9.8, 0.5, 9.8, 0xdc2626, 0, 5.45, 0);            // 红屋顶
+      vox(parent, 2.0, 2.2, 0.1, 0x713f12, 0, 1.1, 4.55);          // 门
+      vox(parent, 1.4, 1.4, 0.1, 0xf8fafc, 0, 4.3, 4.55);          // 钟表盘
+      vox(parent, 0.3, 0.9, 0.05, 0x111827, 0, 4.3, 4.62);         // 时针
+      vox(parent, 0.9, 0.3, 0.05, 0x111827, 0, 4.3, 4.62);         // 分针
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 1.3, 1.4, 0.1, 0x0ea5e9, -3.6 + i * 2.4, 3.4, 4.55);   // 蓝窗
+      }
+      vox(parent, 0.12, 4.0, 0.12, 0xf8fafc, 3.4, 7.7, 3.4);      // 旗杆
+      vox(parent, 1.2, 0.8, 0.08, 0xdc2626, 4.0, 9.2, 3.4);        // 红旗
+    }
+
+    // 校园用地：铺地 + 树木 / 喷泉 / 石板路（按格子位置确定性分布）
+    function buildCampusCell(parent, r, c) {
+      vox(parent, 9.6, 0.06, 9.6, 0xd6c7a1, 0, 0.03, 0);           // 校园铺地
+      const kind = (r * 31 + c * 17) % 3;
+      if (kind === 0) {
+        // 树
+        vox(parent, 0.6, 2.2, 0.6, 0x6d4c2f, 0, 1.1, 0);
+        vox(parent, 2.6, 2.0, 2.6, 0x4d7c0f, 0, 3.2, 0);
+        vox(parent, 2.0, 1.2, 2.0, 0x65a30d, 0, 4.2, 0);
+      } else if (kind === 1) {
+        // 喷泉
+        vox(parent, 3.2, 0.5, 3.2, 0x94a3b8, 0, 0.28, 0);
+        vox(parent, 1.8, 0.9, 1.8, 0x7dd3fc, 0, 0.95, 0);
+      } else {
+        // 石板小径
+        for (const [sx, sz] of [[-2.6, -2.6], [2.6, 2.6], [-2.6, 2.6], [2.6, -2.6]]) {
+          vox(parent, 2.2, 0.08, 2.2, 0xcbd5e1, sx, 0.07, sz);
+        }
+      }
+    }
+
+    // 政府大楼：白墙 + 立柱 + 圆顶 + 国旗（占领状态变色）
+    function buildGov(parent) {
+      vox(parent, 9.2, 5.5, 8.0, 0xf1f5f9, 0, 2.75, 0);
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 0.6, 4.6, 0.6, 0xe2e8f0, -3.4 + i * 2.26, 2.3, 4.2);
+      }
+      vox(parent, 9.4, 0.6, 1.8, 0xcbd5e1, 0, 4.9, 4.2);
+      vox(parent, 3.4, 0.7, 3.4, 0x475569, 0, 6.1, 0);
+      vox(parent, 2.2, 1.6, 2.2, 0x334155, 0, 7.0, 0);
+      vox(parent, 0.12, 4.5, 0.12, 0xf8fafc, 3.6, 8.0, 3.0);
+      const flag = vox(parent, 1.3, 0.9, 0.1, 0x16a34a, 4.3, 9.9, 3.0);
+      parent.userData.flagCloth = flag;
+    }
+
+    // 政府用地：广场铺地 + 旗杆/花坛
+    function buildGovYard(parent, r, c) {
+      vox(parent, 9.6, 0.06, 9.6, 0xcbd5e1, 0, 0.03, 0);
+      const kind = (r * 13 + c * 7) % 2;
+      if (kind === 0) {
+        vox(parent, 0.15, 3.5, 0.15, 0xf8fafc, -2.5, 1.75, -2.5);
+        vox(parent, 1.2, 0.8, 0.08, 0x16a34a, -1.8, 3.2, -2.5);
+      } else {
+        vox(parent, 2.6, 0.5, 2.6, 0x94a3b8, 2.5, 0.25, 2.5);
+        vox(parent, 1.4, 0.7, 1.4, 0x4ade80, 2.5, 0.85, 2.5);
+      }
+    }
+
+    // 大学主楼：校门 + 紫瓦主楼 + 立柱门廊 + 圆顶 + 两翼 + 紫旗
+    function buildUniversity(parent) {
+      // 校门
+      vox(parent, 0.6, 4.6, 0.6, 0xf8fafc, -4.0, 2.3, 4.2);
+      vox(parent, 0.6, 4.6, 0.6, 0xf8fafc, 4.0, 2.3, 4.2);
+      vox(parent, 9.4, 0.8, 0.8, 0x6d28d9, 0, 5.0, 4.2);           // 门楣
+      vox(parent, 9.2, 6.0, 6.0, 0xede9fe, 0, 3.0, 0.6);           // 主楼
+      vox(parent, 9.8, 0.4, 6.6, 0x6d28d9, 0, 6.2, 0.6);           // 紫屋顶
+      for (let i = 0; i < 4; i++) {                                // 门廊立柱
+        vox(parent, 0.5, 4.0, 0.5, 0xf8fafc, -3.3 + i * 2.2, 2.0, 4.3);
+      }
+      vox(parent, 9.2, 0.5, 1.6, 0xede9fe, 0, 4.2, 4.3);           // 门廊顶
+      vox(parent, 3.4, 0.6, 3.4, 0x6d28d9, 0, 6.8, 0.6);           // 圆顶基座
+      vox(parent, 2.4, 1.6, 2.4, 0x7c3aed, 0, 7.9, 0.6);           // 圆顶
+      vox(parent, 2.6, 3.6, 4.6, 0xddd6fe, -3.3, 1.8, -2.2);       // 左翼
+      vox(parent, 2.6, 3.6, 4.6, 0xddd6fe, 3.3, 1.8, -2.2);        // 右翼
+      vox(parent, 3.0, 0.3, 5.0, 0x6d28d9, -3.3, 3.8, -2.2);       // 翼顶
+      vox(parent, 3.0, 0.3, 5.0, 0x6d28d9, 3.3, 3.8, -2.2);
+      vox(parent, 0.12, 4.0, 0.12, 0xf8fafc, -3.6, 8.6, 2.6);      // 旗杆
+      vox(parent, 1.2, 0.8, 0.08, 0x6d28d9, -3.0, 10.2, 2.6);      // 紫旗
+    }
+
+    // 小麦农场：褐色田地 + 金色麦穗 + 谷仓
+    function buildFarm(parent) {
+      vox(parent, 9.4, 0.2, 9.4, 0x8b6f47, 0, 0.1, 0);            // 田地
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 4; j++) {
+          const wx = -3.1 + i * 3.1;
+          const wz = -3.5 + j * 2.35;
+          vox(parent, 0.5, 1.1, 0.5, j % 2 ? 0xd9c75b : 0xc7b34e, wx, 0.75, wz);
+        }
+      }
+      vox(parent, 2.2, 1.6, 2.2, 0xa16207, 3.4, 0.8, 3.4);        // 谷仓
+      vox(parent, 2.6, 0.3, 2.6, 0x713f12, 3.4, 1.75, 3.4);       // 谷仓顶
+    }
+
+    // 医院：白楼 + 红十字
+    function buildHospital(parent) {
+      vox(parent, 9.2, 4.0, 9.2, 0xf8fafc, 0, 2.0, 0);
+      vox(parent, 9.6, 0.35, 9.6, 0x64748b, 0, 4.2, 0);
+      vox(parent, 1.8, 2.0, 0.1, 0x1e293b, 0, 1.0, 4.55);
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 1.2, 1.3, 0.1, 0x7dd3fc, -3.4 + i * 2.3, 2.8, 4.55);
+      }
+      vox(parent, 2.0, 0.6, 0.15, 0xdc2626, 0, 3.4, 4.5);   // 红十字
+      vox(parent, 0.6, 2.0, 0.15, 0xdc2626, 0, 2.7, 4.5);
+    }
+
+    // 围墙：砖墙 + 垛口
+    function buildWall(parent) {
+      vox(parent, 9.4, 2.2, 2.2, 0x92400e, 0, 1.1, 0);
+      vox(parent, 9.4, 0.5, 2.6, 0x78350f, 0, 2.45, 0);
+      for (let i = 0; i < 4; i++) {
+        vox(parent, 1.2, 0.6, 1.6, 0xb45309, -3.5 + i * 2.33, 2.9, 0);
+      }
+    }
+
+    function createTileMesh(r, c, typeOverride) {
+      const type = typeOverride ?? map[r][c];
+      if (type === TILE.EMPTY) return null;
+      if (type === TILE.ROAD) return createRoadModel(r, c, typeOverride !== undefined);   // 道路使用综合模型
+      const group = new THREE.Group();
+      switch (type) {
+        case TILE.RESIDENTIAL: buildResidentialCell(group); break;
+        case TILE.MARKET: buildMarket(group); break;
+        case TILE.RESTAURANT: buildRestaurant(group); break;
+        case TILE.CLOTHING: buildClothing(group); break;
+        case TILE.INDUSTRIAL: buildIndustry(group); break;
+        case TILE.SOLAR: buildSolar(group); break;
+        case TILE.COAL: buildCoalPlant(group); break;
+        case TILE.BARRACKS: buildBarracks(group); break;
+        case TILE.SCHOOL: buildSchool(group); break;
+        case TILE.UNIVERSITY: buildUniversity(group); break;
+        case TILE.CAMPUS: buildCampusCell(group, r, c); break;
+        case TILE.FARM: buildFarm(group); break;
+        case TILE.GOV: buildGov(group); break;
+        case TILE.GOVYARD: buildGovYard(group, r, c); break;
+        case TILE.HOSPITAL: buildHospital(group); break;
+        case TILE.WALL: buildWall(group); break;
+        default: {
+          // 模组方块：交给注册的建造器
+          const modBuilder = MOD_TILE_BUILDERS[type];
+          if (modBuilder) modBuilder(group, r, c);
+          break;
+        }
+      }
+
+      // 店铺：挂一个“供货状态”悬浮标记（有工业供货时亮起并浮动）
+      if (SHOP_TILES.has(type)) {
+        const marker = new THREE.Mesh(
+          new THREE.BoxGeometry(1.4, 0.6, 1.4),
+          new THREE.MeshBasicMaterial({ color: 0xfb923c })
+        );
+        marker.position.y = (BUILDING_STYLE[type].h || 7) + 2.2;
+        marker.visible = false;
+        group.add(marker);
+        group.userData.marker = marker;
+      }
+
+      group.position.set(c * CELL + CELL / 2, 0, r * CELL + CELL / 2);
+      return group;
+    }
+
+    // 住宅小区：相连的住宅合并为一个整体小区，每格一栋像素公寓楼
+    function createResidentialGroup(cells) {
+      const group = new THREE.Group();
+      for (const [cr, cc] of cells) {
+        const cellGroup = new THREE.Group();
+        buildResidentialCell(cellGroup);
+        cellGroup.position.set(cc * CELL + CELL / 2, 0, cr * CELL + CELL / 2);
+        group.add(cellGroup);
+      }
+      return group;
+    }
+
+    // 重建 (r,c) 及其邻居所在的住宅小区（放置/拆除住宅后调用）
+    function rebuildResidentialRegion(r, c) {
+      const seeds = [[r, c], [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+      const visited = new Set();
+      const components = [];
+      for (const [sr, sc] of seeds) {
+        if (sr < 0 || sr >= GRID_ROWS || sc < 0 || sc >= GRID_COLS) continue;
+        const skey = sr * GRID_COLS + sc;
+        if (visited.has(skey) || map[sr][sc] !== TILE.RESIDENTIAL || constructionMap[sr][sc]) continue;
+        const cells = [];
+        const stack = [[sr, sc]];
+        while (stack.length) {
+          const [cr, cc] = stack.pop();
+          const k = cr * GRID_COLS + cc;
+          if (visited.has(k)) continue;
+          visited.add(k);
+          if (map[cr][cc] !== TILE.RESIDENTIAL || constructionMap[cr][cc]) continue;
+          cells.push([cr, cc]);
+          for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.RESIDENTIAL && !constructionMap[nr][nc]) {
+              stack.push([nr, nc]);
+            }
+          }
+        }
+        if (cells.length) components.push(cells);
+      }
+      // 移除旧模型（同一个小区模型被多个格子共享，去重后再移除）
+      const oldMeshes = new Set();
+      for (const cells of components) {
+        for (const [cr, cc] of cells) {
+          if (tileMeshes[cr][cc]) oldMeshes.add(tileMeshes[cr][cc]);
+        }
+      }
+      for (const m of oldMeshes) scene.remove(m);
+      // 重建每个小区
+      for (const cells of components) {
+        const group = createResidentialGroup(cells);
+        for (const [cr, cc] of cells) tileMeshes[cr][cc] = group;
+        scene.add(group);
+      }
+    }
+
+    // 重新生成某格的模型（放置 / 拆除时调用；施工中的格子显示工地）
+    function refreshTile(r, c) {
+      const constructing = !!constructionMap[r][c];
+      if (!constructing) {
+        rebuildResidentialRegion(r, c);   // 涉及住宅的连通区域整体重建（合并成小区）
+      }
+      if (map[r][c] === TILE.RESIDENTIAL && !constructing) {
+        // 已完成的小区由 rebuildResidentialRegion 统一处理
+      } else {
+        if (tileMeshes[r][c]) {
+          scene.remove(tileMeshes[r][c]);
+          tileMeshes[r][c] = null;
+        }
+        const mesh = constructing ? createConstructionSite() : createTileMesh(r, c);
+        if (mesh) {
+          tileMeshes[r][c] = mesh;
+          scene.add(mesh);
+        }
+      }
+      syncWalkers();   // 道路/住宅变化，同步居民数量与位置
+    }
+
+    // 只重建某格道路模型（不触发小区/居民逻辑）
+    function rebuildRoadTile(r, c) {
+      if (tileMeshes[r][c]) {
+        scene.remove(tileMeshes[r][c]);
+        tileMeshes[r][c] = null;
+      }
+      if (map[r][c] === TILE.ROAD) {
+        const mesh = createRoadModel(r, c, false);
+        tileMeshes[r][c] = mesh;
+        scene.add(mesh);
+      }
+    }
+
+    // 相邻道路的模型也要更新（共享边的沥青/人行道衔接）
+    function refreshRoadNeighbors(r, c) {
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.ROAD) {
+          rebuildRoadTile(nr, nc);
+        }
+      }
+    }
+
+    // ========== 建造过程：30 秒起步的施工时间 ==========
+    const BUILD_TIME_BASE = 30;          // 基础施工秒数（造价越高越久）
+    const constructionMap = [];
+    for (let r = 0; r < GRID_ROWS; r++) {
+      constructionMap.push(new Array(GRID_COLS).fill(null));
+    }
+    const constructionList = [];         // 施工队列 { r, c, type, total, remaining }
+
+    // 文字牌（工地百分比用）
+    function makeTextSprite(text, color) {
+      const cnv = document.createElement('canvas');
+      cnv.width = 128;
+      cnv.height = 64;
+      const g2 = cnv.getContext('2d');
+      g2.font = 'bold 42px "Microsoft YaHei", sans-serif';
+      g2.textAlign = 'center';
+      g2.textBaseline = 'middle';
+      g2.fillStyle = color;
+      g2.fillText(text, 64, 32);
+      const tex = new THREE.CanvasTexture(cnv);
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, fog: false });
+      const sp = new THREE.Sprite(mat);
+      sp.scale.set(5.5, 2.75, 1);
+      return sp;
+    }
+    function updateTextSprite(sp, text) {
+      const g2 = sp.material.map.image.getContext('2d');
+      g2.clearRect(0, 0, 128, 64);
+      g2.fillStyle = '#4ade80';
+      g2.fillText(text, 64, 32);
+      sp.material.map.needsUpdate = true;
+    }
+
+    // 工地模型：地基 + 脚手架 + 从地面生长的建筑 + 进度条 + 百分比 + 摆动吊钩
+    function createConstructionSite(r, c) {
+      const g = new THREE.Group();
+      vox(g, 9.2, 0.4, 9.2, 0x94a3b8, 0, 0.2, 0);            // 地基
+      // 建筑本体：施工期间从地面一点点“长”出来（scale.y 随进度增长）
+      const real = createTileMesh(r, c);
+      if (real) {
+        real.position.set(0, 0, 0);
+        real.scale.y = 0.02;
+        g.add(real);
+        g.userData.real = real;
+      }
+      for (const [sx, sz] of [[-4, -4], [4, -4], [4, 4], [-4, 4]]) {
+        vox(g, 0.5, 8, 0.5, 0x92400e, sx, 4, sz);            // 脚手架立柱
+      }
+      vox(g, 8.5, 0.4, 0.4, 0x92400e, 0, 7.8, -4);           // 横杆
+      vox(g, 8.5, 0.4, 0.4, 0x92400e, 0, 7.8, 4);
+      vox(g, 0.4, 0.4, 8.5, 0x92400e, -4, 7.8, 0);
+      vox(g, 0.4, 0.4, 8.5, 0x92400e, 4, 7.8, 0);
+      vox(g, 1.6, 0.3, 1.6, 0x334155, 0, 0.35, 0);           // 进度条底座
+      const bar = vox(g, 1.2, 1, 1.2, 0x4ade80, 0, 0.95, 0); // 进度条（随进度长高）
+      g.userData.progressBar = bar;
+      // 顶部吊钩（上下摆动，工地“活”起来）
+      const hook = vox(g, 0.9, 1.4, 0.9, 0xf97316, 0, 8.5, 0);
+      g.userData.hook = hook;
+      // 百分比文字牌
+      const pct = makeTextSprite('0%', '#4ade80');
+      pct.position.y = 11;
+      g.add(pct);
+      g.userData.pctSprite = pct;
+      return g;
+    }
+
+    function startConstruction(r, c, type) {
+      // 建造时间已移除：建筑即时落成（工地相关函数保留，供模组调用）
+    }
+
+    function cancelConstruction(r, c) {
+      const e = constructionMap[r][c];
+      if (!e) return;
+      const i = constructionList.indexOf(e);
+      if (i >= 0) constructionList.splice(i, 1);
+      constructionMap[r][c] = null;
+    }
+
+    function clearAllConstruction() {
+      constructionList.length = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          constructionMap[r][c] = null;
+        }
+      }
+    }
+
+    // 每帧推进施工进度，完成后换成正式建筑
+    function updateConstruction(dt) {
+      for (let i = constructionList.length - 1; i >= 0; i--) {
+        const e = constructionList[i];
+        e.remaining -= dt;
+        const p = Math.min(1, Math.max(0, 1 - e.remaining / e.total));
+        const mesh = tileMeshes[e.r][e.c];
+        if (mesh) {
+          if (mesh.userData.real) {
+            mesh.userData.real.scale.y = 0.02 + p * 0.98;   // 建筑从地面生长
+          }
+          if (mesh.userData.progressBar) {
+            const bar = mesh.userData.progressBar;
+            bar.scale.y = 0.05 + p * 7;
+            bar.position.y = 0.5 + bar.scale.y / 2;
+          }
+          if (mesh.userData.hook) {
+            mesh.userData.hook.position.y = 8.2 + Math.sin(performance.now() / 180) * 0.8;   // 吊钩摆动
+          }
+          if (mesh.userData.pctSprite) {
+            const pctVal = Math.round(p * 100);
+            if (e.lastPct !== pctVal) {
+              e.lastPct = pctVal;
+              updateTextSprite(mesh.userData.pctSprite, pctVal + '%');
+            }
+          }
+        }
+        if (e.remaining <= 0) {
+          constructionList.splice(i, 1);
+          constructionMap[e.r][e.c] = null;
+          refreshTile(e.r, e.c);
+          if (e.type === TILE.GOV) govGroupRef = tileMeshes[e.r][e.c];
+          if (e.type !== TILE.CAMPUS && e.type !== TILE.GOVYARD) {
+            statusEl.textContent = `✅ 建设完成：${TILE_NAMES[e.type]}`;
+            spawnFloatText('✅ 建成！', e.c * CELL + CELL / 2, e.r * CELL + CELL / 2, '#4ade80');
+          }
+          if (window.GameMod) GameMod.events.emit('built', { type: e.type, r: e.r, c: e.c });
+        }
+      }
+    }
+
+    // 悬停高亮：白色半透明方块（放置预览：绿=可放，红=不可放）
+    const hoverMarker = new THREE.Mesh(
+      new THREE.BoxGeometry(CELL, 0.4, CELL),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false })
+    );
+    hoverMarker.visible = false;
+    scene.add(hoverMarker);
+
+    function setHover(cell) {
+      if (!cell) {
+        hoverMarker.visible = false;
+        return;
+      }
+      hoverMarker.position.set(cell.worldX, 0.25, cell.worldZ);
+      hoverMarker.visible = true;
+      let color = 0xffffff;
+      if (cell.side === 'own' && isLockedRow(cell.r)) {
+        color = 0x64748b;   // 未解锁土地：灰色
+      } else if (selectedType === 'demolish') {
+        // 拆除模式：可拆除的建筑显示红色
+        if (cell.side === 'own' && map[cell.r][cell.c] !== TILE.EMPTY) color = 0xef4444;
+      } else if (cell.side === 'own' && map[cell.r][cell.c] === TILE.EMPTY && (govPlaceMode || selectedType === TILE.GOV)) {
+        color = canPlaceGov(cell.r, cell.c) ? 0x22c55e : 0xef4444;
+      } else if (cell.side === 'own' && map[cell.r][cell.c] === TILE.EMPTY && selectedType !== null) {
+        const cost = BUILDING_COST[selectedType] ?? 0;
+        const ok = selectedType === TILE.UNIVERSITY
+          ? canPlaceUniversity(cell.r, cell.c)
+          : canPlaceAt(cell.r, cell.c, selectedType);
+        color = ok && money >= cost ? 0x22c55e : 0xef4444;
+      }
+      hoverMarker.material.color.setHex(color);
+    }
+
+    // ========== 居民系统：在马路上随机走动的行人 ==========
+    const WALKER_PER_HOUSE = 3;   // 每栋住宅带来的居民数
+    const MAX_WALKERS = 160;      // 人数上限（大地图同步提升）
+    const WALKER_SPEED = 3.2;     // 步行速度（单位/秒）
+    const SHOP_VISIT_CHANCE = 0.25;   // 小人在人行道上歇脚后去逛店的概率
+    const SIDEWALK_TOP = 0.5;     // 人行道表面高度，小人站在人行道上
+    const CORNER_OFF = 3.5;       // 人行道角点相对格子中心的偏移（车道 4 宽）
+    // 0=西北 1=东北 2=东南 3=西南（与道路模型四角顺序一致）
+    const CORNER_OFFSETS = [
+      [-CORNER_OFF, -CORNER_OFF], [CORNER_OFF, -CORNER_OFF],
+      [CORNER_OFF, CORNER_OFF],   [-CORNER_OFF, CORNER_OFF],
+    ];
+
+    const walkers = [];           // 所有居民：{ group, r, c, corner, shopR, shopC, mode, timer, fromX, fromZ, toX, toZ, t, duration }
+    let roadCells = [];           // 当前所有道路格 {r, c}
+
+    function countResidential() {
+      let n = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.RESIDENTIAL) n++;
+        }
+      }
+      return n;
+    }
+
+    // 收集当前所有道路格
+    function refreshRoadList() {
+      roadCells = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.ROAD) roadCells.push({ r, c });
+        }
+      }
+    }
+
+    // 人行道角点在世界坐标中的位置
+    function cornerPos(r, c, corner) {
+      return {
+        x: c * CELL + CELL / 2 + CORNER_OFFSETS[corner][0],
+        z: r * CELL + CELL / 2 + CORNER_OFFSETS[corner][1],
+      };
+    }
+
+    // 同格四角相邻对 = 横穿车道（过马路）
+    const CROSS_PAIRS = [[0, 1], [1, 2], [2, 3], [3, 0]];
+    // 相邻道路格的人行道连通规则（沿步道走，不横穿）
+    const HOP_RULES = [
+      { dr: 0, dc: 1,  from: 1, to: 0 },   // 东：NE ↔ 东格 NW
+      { dr: 0, dc: 1,  from: 0, to: 1 },
+      { dr: 0, dc: -1, from: 0, to: 1 },   // 西：NW ↔ 西格 NE
+      { dr: 0, dc: -1, from: 1, to: 0 },
+      { dr: 1, dc: 0,  from: 2, to: 1 },   // 南：SE ↔ 南格 NE
+      { dr: 1, dc: 0,  from: 3, to: 0 },
+      { dr: -1, dc: 0, from: 1, to: 2 },   // 北：NE ↔ 北格 SE
+      { dr: -1, dc: 0, from: 0, to: 3 },
+    ];
+
+    // 随机挑下一步：同格过马路，或走到相邻道路格的人行道上
+    function pickNextCorner(w) {
+      const options = [];
+      // 同格内横穿车道（任意相邻两角）
+      for (const [a, b] of CROSS_PAIRS) {
+        if (a === w.corner) options.push({ r: w.r, c: w.c, corner: b });
+        if (b === w.corner) options.push({ r: w.r, c: w.c, corner: a });
+      }
+      // 相邻道路格的人行道连通
+      for (const rule of HOP_RULES) {
+        if (rule.from !== w.corner) continue;
+        const nr = w.r + rule.dr;
+        const nc = w.c + rule.dc;
+        if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.ROAD) {
+          options.push({ r: nr, c: nc, corner: rule.to });
+        }
+      }
+      if (options.length === 0) return null;
+      return options[Math.floor(Math.random() * options.length)];
+    }
+
+    // 设定步行目标（任意两个点位之间的移动）
+    function setTarget(w, pos) {
+      w.fromX = w.group.position.x;
+      w.fromZ = w.group.position.z;
+      w.toX = pos.x;
+      w.toZ = pos.z;
+      const dist = Math.hypot(w.toX - w.fromX, w.toZ - w.fromZ);
+      w.duration = Math.max(0.05, dist / WALKER_SPEED);
+      w.t = 0;
+    }
+
+    // 寻找小人所在道路格旁边的店铺，返回店铺与入口位置
+    function findShopVisit(w) {
+      const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      const shops = [];
+      for (const [dr, dc] of dirs) {
+        const nr = w.r + dr;
+        const nc = w.c + dc;
+        if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && SHOP_TILES.has(map[nr][nc])) {
+          shops.push({ r: nr, c: nc });
+        }
+      }
+      if (shops.length === 0) return null;
+      const shop = shops[Math.floor(Math.random() * shops.length)];
+      return { shop, entrance: shopDoorPos(w.r, w.c, shop.r, shop.c, w.corner) };
+    }
+
+    // 店铺门口：道路格与店铺格共享边、与小人所在人行道对齐的位置
+    function shopDoorPos(roadR, roadC, shopR, shopC, corner) {
+      const cx = roadC * CELL + CELL / 2;
+      const cz = roadR * CELL + CELL / 2;
+      const side = CORNER_OFFSETS[corner][0];   // ±3.25，与小人所在人行道对齐
+      const inset = CELL / 2 - 0.8;             // 4.2：门在店铺边上、略靠近道路
+      const dr = shopR - roadR;
+      const dc = shopC - roadC;
+      if (dr === -1) return { x: cx + side, z: cz - inset };   // 店铺在北
+      if (dr === 1)  return { x: cx + side, z: cz + inset };   // 店铺在南
+      if (dc === -1) return { x: cx - inset, z: cz + side };   // 店铺在西
+      return { x: cx + inset, z: cz + side };                  // 店铺在东
+    }
+
+    function startVisit(w, visit) {
+      w.shopR = visit.shop.r;
+      w.shopC = visit.shop.c;
+      w.mode = 'toShop';
+      setTarget(w, { x: visit.entrance.x, z: visit.entrance.z });
+    }
+
+    // 店铺被拆：取消逛街，回到人行道继续溜达
+    function cancelVisit(w) {
+      w.shopR = null;
+      w.shopC = null;
+      w.mode = 'idle';
+      w.timer = 0.5;
+      w.group.visible = true;
+      const pos = cornerPos(w.r, w.c, w.corner);
+      w.group.position.set(pos.x, SIDEWALK_TOP, pos.z);
+      w.fromX = w.toX = pos.x;
+      w.fromZ = w.toZ = pos.z;
+      w.t = 0;
+    }
+
+    // 小人体模型：彩色圆柱身体 + 圆脑袋
+    function createWalkerModel() {
+      const shirtColors = [0xf97316, 0x22c55e, 0x3b82f6, 0xeab308, 0xec4899, 0x8b5cf6, 0x14b8a6, 0xef4444];
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.45, 0.55, 1.0, 8),
+        new THREE.MeshLambertMaterial({ color: shirtColors[Math.floor(Math.random() * shirtColors.length)] })
+      );
+      body.position.y = 0.5;
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.32, 10, 8),
+        new THREE.MeshLambertMaterial({ color: 0xfcd9b8 })
+      );
+      head.position.y = 1.25;
+      group.add(body, head);
+      return group;
+    }
+
+    function spawnWalker() {
+      if (roadCells.length === 0) return;   // 没有马路就没有行人
+      const cell = roadCells[Math.floor(Math.random() * roadCells.length)];
+      const corner = Math.floor(Math.random() * 4);   // 随机站到某个人行道角
+      const pos = cornerPos(cell.r, cell.c, corner);
+      const group = createWalkerModel();
+      group.position.set(pos.x, SIDEWALK_TOP, pos.z);
+      scene.add(group);
+      walkers.push({
+        group, r: cell.r, c: cell.c, corner, shopR: null, shopC: null,
+        mode: 'idle', timer: 0.5 + Math.random() * 2,
+        fromX: pos.x, fromZ: pos.z, toX: pos.x, toZ: pos.z, t: 0, duration: 0,
+      });
+    }
+
+    function removeWalker(w) {
+      scene.remove(w.group);
+    }
+
+    // 让居民数量与住宅数量同步（建新房来人，拆房走人）
+    function syncWalkers() {
+      refreshRoadList();
+
+      // 道路被拆光：居民全部离开
+      if (roadCells.length === 0) {
+        for (const w of walkers) removeWalker(w);
+        walkers.length = 0;
+        return;
+      }
+
+      // 人数目标 = 住宅数 × 每栋人数（有上限）
+      const target = Math.min(countResidential() * WALKER_PER_HOUSE, Math.floor(population / 3), MAX_WALKERS);
+      while (walkers.length < target) spawnWalker();
+      while (walkers.length > target) {
+        removeWalker(walkers.pop());
+      }
+
+      // 逛的店被拆：取消逛街回到人行道；脚下道路被拆：瞬移到随机人行道角
+      for (const w of walkers) {
+        if (w.shopR !== null && !SHOP_TILES.has(map[w.shopR][w.shopC])) {
+          cancelVisit(w);
+        }
+        if (map[w.r][w.c] !== TILE.ROAD) {
+          const cell = roadCells[Math.floor(Math.random() * roadCells.length)];
+          w.r = cell.r;
+          w.c = cell.c;
+          w.corner = Math.floor(Math.random() * 4);
+          w.shopR = null;
+          w.shopC = null;
+          w.mode = 'idle';
+          w.timer = 0.5;
+          w.group.visible = true;
+          const pos = cornerPos(cell.r, cell.c, w.corner);
+          w.group.position.set(pos.x, SIDEWALK_TOP, pos.z);
+          w.fromX = w.toX = pos.x;
+          w.fromZ = w.toZ = pos.z;
+          w.t = 0;
+        }
+      }
+    }
+
+    // 每帧更新：站一会儿 → 逛店或随机走动 → 再站一会儿……
+    function updateWalkers(dt) {
+      for (const w of walkers) {
+        w.timer -= dt;
+        if (w.mode === 'idle') {
+          if (w.timer <= 0) {
+            // 一定概率：去逛旁边的店
+            if (Math.random() < SHOP_VISIT_CHANCE) {
+              const visit = findShopVisit(w);
+              if (visit) {
+                startVisit(w, visit);
+                continue;
+              }
+            }
+            // 普通游走：过马路或沿人行道到相邻格
+            const next = pickNextCorner(w);
+            if (next) {
+              w.r = next.r;
+              w.c = next.c;
+              w.corner = next.corner;
+              w.mode = 'walk';
+              setTarget(w, cornerPos(next.r, next.c, next.corner));
+            }
+          }
+        } else if (w.mode === 'shopping') {
+          // 逛够了：从店里出来，走回人行道
+          if (w.timer <= 0) {
+            w.group.visible = true;
+            w.mode = 'backToSidewalk';
+            setTarget(w, cornerPos(w.r, w.c, w.corner));
+          }
+        } else {
+          // 走路中（walk / toShop / backToSidewalk 共用移动逻辑）
+          w.t += dt;
+          const k = Math.min(1, w.t / w.duration);
+          w.group.position.x = w.fromX + (w.toX - w.fromX) * k;
+          w.group.position.z = w.fromZ + (w.toZ - w.fromZ) * k;
+          if (k >= 1) {
+            if (w.mode === 'toShop') {
+              // 到店门口：进店逛一圈（隐身）
+              w.mode = 'shopping';
+              w.timer = 3 + Math.random() * 5;   // 逛 3~8 秒
+              w.group.visible = false;
+            } else {
+              w.mode = 'idle';
+              w.timer = 0.8 + Math.random() * 2.2;
+            }
+          }
+        }
+      }
+    }
+
+    // 初始化居民系统
+    refreshRoadList();
+    syncWalkers();
+
+    // ========== 商铺经济：盈利能力与周边人口挂钩 ==========
+    const RESIDENTS_PER_HOUSE = 10;   // 每栋住宅 10 人（用于计算周边人口）
+    const SHOP_TICK = 10;             // 每 10 秒结算一次商铺收入
+    const SHOP_RADIUS = 3;            // “周边”统计半径（格）
+    // 各商铺盈利能力：基础收入 + 每人加成，上限封顶（元/10秒/格）
+    const SHOP_PROFIT = {
+      [TILE.MARKET]:     { base: 2,   perPop: 0.4, cap: 25 },  // 超市：薄利多销，人气要求低
+      [TILE.RESTAURANT]: { base: 1,   perPop: 0.7, cap: 35 },  // 饭店：更依赖人气
+      [TILE.CLOTHING]:   { base: 0.5, perPop: 1.0, cap: 45 },  // 服装店：门槛高、上限最高
+    };
+    const SHOP_TILES = new Set([TILE.MARKET, TILE.RESTAURANT, TILE.CLOTHING]);
+    const START_MONEY = 3000;         // 初始金钱
+    // 建造造价（贴近中国现实：房价最贵、光伏便宜，拆除时半价回收）
+    const BUILDING_COST = {
+      [TILE.ROAD]: 20,                // 道路：基建便宜
+      [TILE.RESIDENTIAL]: 600,        // 住宅：中国房价最贵
+      [TILE.INDUSTRIAL]: 400,         // 工业：厂房+设备
+      [TILE.SOLAR]: 80,               // 太阳能板：光伏成本已很低
+      [TILE.COAL]: 350,               // 火电：重资产大投资
+      [TILE.MARKET]: 120,             // 小型超市
+      [TILE.RESTAURANT]: 150,         // 饭店
+      [TILE.CLOTHING]: 180,           // 服装店
+      [TILE.BARRACKS]: 400,           // 军营
+      [TILE.SCHOOL]: 300,             // 初级学堂
+      [TILE.UNIVERSITY]: 600,         // 大学
+      [TILE.FARM]: 150,               // 小麦农场
+      [TILE.HOSPITAL]: 400,           // 医院
+      [TILE.WALL]: 30,                // 围墙
+    };
+    let money = START_MONEY;          // 当前金钱
+    let shopTimer = SHOP_TICK;        // 距下次商铺结算的剩余秒数
+
+    // --- 供电系统（与 2D 版同步）：所有建筑落地自动接入电网，无需电线 ---
+    const SOLAR_OUTPUT = 2;           // 太阳能板每格发电 2 单位
+    const COAL_OUTPUT = 8;            // 火力发电站每格发电 8 单位
+    const SELL_PRICE = 0.25;          // 卖电单价：元/单位/秒
+    const BUY_PRICE = 0.5;            // 买电单价：元/单位/秒（比卖电贵一倍）
+    const POWER_USE = {               // 每格耗电量（道路/空地/发电建筑不耗电）
+      [TILE.RESIDENTIAL]: 1,          // 住宅：1
+      [TILE.INDUSTRIAL]: 2,           // 工业：2
+      [TILE.MARKET]: 1,               // 超市：1
+      [TILE.RESTAURANT]: 1,           // 饭店：1
+      [TILE.CLOTHING]: 1,             // 服装店：1
+      [TILE.BARRACKS]: 1,             // 军营：1
+      [TILE.SCHOOL]: 1,               // 初级学堂：1
+      [TILE.UNIVERSITY]: 1,           // 大学：1
+      [TILE.HOSPITAL]: 1,             // 医院：1
+    };
+    let powerTimer = 0;               // 电力每秒结算的累计时间
+
+    // 统计某格周边（半径 SHOP_RADIUS）的住宅人口
+    function nearbyPopulation(r, c) {
+      let pop = 0;
+      for (let dr = -SHOP_RADIUS; dr <= SHOP_RADIUS; dr++) {
+        for (let dc = -SHOP_RADIUS; dc <= SHOP_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.RESIDENTIAL) {
+            pop += RESIDENTS_PER_HOUSE;
+          }
+        }
+      }
+      return pop;
+    }
+
+    // 某类商铺在当前周边人口下的单次收入（元/10秒/格）
+    function shopProfit(type, r, c) {
+      const p = SHOP_PROFIT[type];
+      if (!p) return 0;
+      return Math.min(p.cap, p.base + p.perPop * nearbyPopulation(r, c));
+    }
+
+    // --- 工业供货体系：工业给周边店铺供货 → 店铺成本降低、收入提升；工业本身获得供货收益 ---
+    const SUPPLY_RADIUS = 4;            // 工业供货半径（格）
+    const SUPPLY_BONUS = 0.5;           // 被供货的店铺收入 +50%
+    const INDUSTRY_SUPPLY_INCOME = 3;   // 工业每供货一家店：+3 元/10秒
+    const INDUSTRY_MAX_SHOPS = 6;       // 每格工业最多供应 6 家店
+
+    // 统计某格周边（半径 SUPPLY_RADIUS）的店铺数量
+    function countShopsNearby(r, c) {
+      let n = 0;
+      for (let dr = -SUPPLY_RADIUS; dr <= SUPPLY_RADIUS; dr++) {
+        for (let dc = -SUPPLY_RADIUS; dc <= SUPPLY_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && SHOP_TILES.has(map[nr][nc])) {
+            n++;
+          }
+        }
+      }
+      return n;
+    }
+
+    // 店铺周围（半径 SUPPLY_RADIUS）有没有工业在供货
+    function isSupplied(r, c) {
+      for (let dr = -SUPPLY_RADIUS; dr <= SUPPLY_RADIUS; dr++) {
+        for (let dc = -SUPPLY_RADIUS; dc <= SUPPLY_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.INDUSTRIAL) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // 全城商铺每 10 秒收入（含供货加成；无小麦农场时饭店盈利减半；生病人口拖累收入）
+    function getShopIncome() {
+      let total = 0;
+      const hasFarm = countTilesOf(TILE.FARM) > 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (SHOP_TILES.has(map[r][c]) && isAdjacentToRoad(r, c)) {
+            let profit = shopProfit(map[r][c], r, c) * (isSupplied(r, c) ? 1 + SUPPLY_BONUS : 1);
+            if (map[r][c] === TILE.RESTAURANT && !hasFarm) profit *= 0.5;
+            total += profit;
+          }
+        }
+      }
+      // 疾病拖累：生病人口越多，收入下降越多（最多 -50%）
+      const sickRatio = population > 0 ? sick / population : 0;
+      return total * (1 - 0.5 * sickRatio);
+    }
+
+    // 全城工业供货每 10 秒收入
+    function getSupplyIncome() {
+      let total = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.INDUSTRIAL && isAdjacentToRoad(r, c)) {
+            total += Math.min(countShopsNearby(r, c), INDUSTRY_MAX_SHOPS) * INDUSTRY_SUPPLY_INCOME;
+          }
+        }
+      }
+      return total;
+    }
+
+    // 全城每 10 秒总收入
+    function getCityIncome() {
+      return getShopIncome() + getSupplyIncome();
+    }
+
+    // 每帧累计时间，到点结算全城收入 + 占领的 AI 建筑收益
+    function updateShops(dt) {
+      shopTimer -= dt;
+      if (shopTimer > 0) return;
+      shopTimer += SHOP_TICK;
+      money += getCityIncome();
+      // 占领 AI 建筑：占领进行中 50%，彻底占领 100%
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const t = aiMap[r][c];
+          if (t === TILE.EMPTY) continue;
+          const owned = aiOwner[r][c] === 'player';
+          const capturing = (aiCapture[r][c] ?? 0) > 0;
+          if ((!owned && !capturing) || !aiIsAdjacentToRoad(r, c)) continue;
+          const mult = owned ? 1 : 0.5;
+          let inc = 0;
+          if (SHOP_TILES.has(t)) {
+            inc = aiShopProfit(t, r, c) * (aiIsSupplied(r, c) ? 1 + SUPPLY_BONUS : 1);
+            if (t === TILE.RESTAURANT && aiCountTilesOf(TILE.FARM) === 0) inc *= 0.5;
+          } else if (t === TILE.INDUSTRIAL) {
+            inc = Math.min(aiCountShopsNearby(r, c), INDUSTRY_MAX_SHOPS) * INDUSTRY_SUPPLY_INCOME;
+          }
+          money += inc * mult;
+        }
+      }
+    }
+
+    // 统计全城发电量与耗电量（所有建筑自动接入电网）
+    function getPowerInfo() {
+      let gen = 0;
+      let use = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const tile = map[r][c];
+          if (tile === TILE.SOLAR) gen += SOLAR_OUTPUT;
+          else if (tile === TILE.COAL) gen += COAL_OUTPUT;
+          use += POWER_USE[tile] || 0;
+        }
+      }
+      return { gen, use };
+    }
+
+    // 电力收支（每秒）：我方 + AI，我方余电优先卖给 AI（比卖电网贵）
+    let powerStats = { gridSell: 0, tradeSell: 0, buyCost: 0 };
+    function updatePower(dt) {
+      powerTimer += dt;
+      if (powerTimer < 1) return;
+      powerTimer -= 1;
+
+      const own = getPowerInfo();
+      const ai = aiGetPowerInfo();
+      const surplus = Math.max(0, own.gen - own.use);
+      const aiShort = Math.max(0, ai.use - ai.gen);
+      const trade = Math.min(surplus, aiShort);   // 卖给 AI 的电量
+
+      const gridSell = (surplus - trade) * SELL_PRICE;      // 余电卖电网
+      const tradeSell = trade * AI_TRADE_PRICE;             // 余电卖给 AI
+      const buyCost = own.gen < own.use ? (own.use - own.gen) * BUY_PRICE : 0;
+      money += gridSell + tradeSell - buyCost;
+
+      // AI 结算：缺电优先买我们的电，剩下的从电网买；有余电卖电网
+      const aiGridBuy = (aiShort - trade) * BUY_PRICE;
+      const aiGridSell = ai.gen > ai.use ? (ai.gen - ai.use) * SELL_PRICE : 0;
+      aiMoney += aiGridSell - tradeSell - aiGridBuy;
+
+      powerStats = { gridSell, tradeSell, buyCost };
+    }
+
+    // --- 食物系统：农场产粮 → 人口消耗，缺粮进口花钱，余粮存仓，爆仓售粮 ---
+    const FARM_OUTPUT = 2;         // 每格小麦农场产粮 2 单位/秒
+    const FOOD_PER_PERSON = 0.01;  // 每人每秒耗粮（100 人耗 1/秒）
+    const FOOD_STORAGE_CAP = 200;  // 粮仓上限
+    const FOOD_BUY_PRICE = 0.2;    // 进口粮价 元/单位（贵）
+    const FOOD_SELL_PRICE = 0.1;   // 售粮价 元/单位（便宜）
+    let food = 0;                  // 当前存粮
+    let foodTimer = 0;
+    let foodStats = { produced: 0, consumed: 0, imported: 0, sold: 0 };
+    let aiFood = 0;                // AI 的存粮
+    let aiFoodStats = { produced: 0, consumed: 0, imported: 0, sold: 0 };
+
+    // 人口增长：食物充足才涨，食物不足停止（饥荒）
+    const POP_GROW_RATE = 0.5;     // 食物充足时每秒增长
+    let popTimer = 0;
+
+    function updatePopulationGrowth(dt) {
+      popTimer += dt;
+      if (popTimer < 0.5) return;
+      popTimer = 0;
+      const capacity = countResidential() * RESIDENTS_PER_HOUSE;
+      if (population >= capacity) return;
+      const demand = population * FOOD_PER_PERSON;
+      const produced = countTilesOf(TILE.FARM) * FARM_OUTPUT;
+      if (produced + food >= demand + 0.2) {   // 食物富余才增长（否则饥荒：停止增长）
+        population = Math.min(capacity, population + POP_GROW_RATE * 0.5);
+      }
+      // 街头居民与实际人口同步
+      const target = Math.min(countResidential() * WALKER_PER_HOUSE, Math.floor(population / 3), MAX_WALKERS);
+      while (walkers.length < target) spawnWalker();
+      while (walkers.length > target) removeWalker(walkers.pop());
+    }
+
+    // 粮仓麦堆高度随存粮变化
+    function updateGranaries() {
+      playerGranary.userData.mound.scale.y = 0.2 + (food / FOOD_STORAGE_CAP) * 5;
+      playerGranary.userData.mound.position.y = playerGranary.userData.mound.scale.y / 2;
+      aiGranary.userData.mound.scale.y = 0.2 + (aiFood / FOOD_STORAGE_CAP) * 5;
+      aiGranary.userData.mound.position.y = aiGranary.userData.mound.scale.y / 2;
+    }
+
+    // 每秒结算一次食物（产出 → 消耗 → 存仓/进口/售粮），我方与 AI 各自结算
+    function updateFood(dt) {
+      foodTimer += dt;
+      if (foodTimer < 1) return;
+      foodTimer -= 1;
+
+      // 我方（按实际人口耗粮）
+      const pop = population;
+      const produced = countTilesOf(TILE.FARM) * FARM_OUTPUT;
+      const demand = pop * FOOD_PER_PERSON;
+      let imported = 0;
+      let sold = 0;
+      const net = produced - demand;
+      if (net >= 0) {
+        food += net;
+        if (food > FOOD_STORAGE_CAP) {
+          sold = food - FOOD_STORAGE_CAP;
+          food = FOOD_STORAGE_CAP;
+          money += sold * FOOD_SELL_PRICE;
+        }
+      } else {
+        const short = -net;
+        if (food >= short) {
+          food -= short;
+        } else {
+          imported = short - food;
+          food = 0;
+          money -= imported * FOOD_BUY_PRICE;
+        }
+      }
+      foodStats = { produced, consumed: demand, imported, sold };
+
+      // AI
+      const aiPop = aiCountTilesOf(TILE.RESIDENTIAL) * RESIDENTS_PER_HOUSE;
+      const aiProduced = aiCountTilesOf(TILE.FARM) * FARM_OUTPUT;
+      const aiDemand = aiPop * FOOD_PER_PERSON;
+      let aiImported = 0;
+      let aiSold = 0;
+      const aiNet = aiProduced - aiDemand;
+      if (aiNet >= 0) {
+        aiFood += aiNet;
+        if (aiFood > FOOD_STORAGE_CAP) {
+          aiSold = aiFood - FOOD_STORAGE_CAP;
+          aiFood = FOOD_STORAGE_CAP;
+          aiMoney += aiSold * FOOD_SELL_PRICE;
+        }
+      } else {
+        const short = -aiNet;
+        if (aiFood >= short) {
+          aiFood -= short;
+        } else {
+          aiImported = short - aiFood;
+          aiFood = 0;
+          aiMoney -= aiImported * FOOD_BUY_PRICE;
+        }
+      }
+      aiFoodStats = { produced: aiProduced, consumed: aiDemand, imported: aiImported, sold: aiSold };
+    }
+
+    // --- 疾病与医院：生病的人需要治疗，饥荒加速传播 ---
+    const HOSPITAL_UPKEEP = 1;         // 每栋医院维护费 元/秒
+    const HOSPITAL_HEAL_RATE = 2;      // 每栋每秒治愈人数
+    const HOSPITAL_SOLDIER_HEAL = 5;   // 医院附近士兵每秒回血
+    const HOSPITAL_HEAL_RANGE = 8;     // 士兵治疗范围
+    const SICK_BASE_RATE = 0.002;      // 基础感染率（每秒，占人口比例）
+    const SICK_FAMINE_RATE = 0.012;    // 饥荒时感染率
+    const WALL_HP = 100;               // 围墙血量
+    let sick = 0;                      // 当前病人数
+    let sickTimer = 0;
+    let healthStats = { infected: 0, healed: 0, upkeep: 0 };
+
+    function updateHealth(dt) {
+      sickTimer += dt;
+      if (sickTimer < 1) return;
+      sickTimer -= 1;
+      const hospitals = countTilesOf(TILE.HOSPITAL);
+      const famine = foodStats.imported > 0;
+      const infected = population * (famine ? SICK_FAMINE_RATE : SICK_BASE_RATE);
+      const healed = Math.min(sick, hospitals * HOSPITAL_HEAL_RATE);
+      sick = Math.max(0, Math.min(population, sick + infected - healed));
+      const upkeep = hospitals * HOSPITAL_UPKEEP;
+      money -= upkeep;
+      healthStats = { infected, healed, upkeep };
+    }
+
+    // --- 政府大楼（3×3，开局自选位置；被占领时夺回前无法建造） ---
+    const GOV_CAPTURE_TIME = 10;   // 占领/夺回耗时（秒）
+    let govPlaced = false;
+    let govR = -1;
+    let govC = -1;
+    let govCapture = 0;
+    let govPlaceMode = true;       // 开局自选位置模式
+    let govGroupRef = null;
+    let govWasOccupied = false;
+
+    function updateGovState() {
+      if (!govPlaced) return;
+      const occupied = govCapture >= 1;
+      if (occupied && !govWasOccupied) {
+        govWasOccupied = true;
+        showError('🏛️ 政府大楼被占领！');
+        statusEl.textContent = '🏛️ 政府大楼被占领！军队正在夺回，夺回前无法建造';
+      } else if (!occupied && govWasOccupied) {
+        govWasOccupied = false;
+        showError('🏛️ 政府大楼已夺回！');
+        statusEl.textContent = '🏛️ 政府大楼已夺回，城市建设恢复';
+      }
+      if (govGroupRef && govGroupRef.userData.flagCloth) {
+        const cloth = govGroupRef.userData.flagCloth;
+        cloth.material.color.setHex(occupied ? 0xdc2626 : govCapture > 0.01 ? 0xf59e0b : 0x16a34a);
+      }
+    }
+
+    // --- 顶部常驻栏（资金/人口）与数据菜单（点击“数据”展开） ---
+    const hudMoneyEl = document.getElementById('hud-money');
+    const hudPopEl = document.getElementById('hud-pop');
+    const moneyTooltipEl = document.getElementById('money-tooltip');
+    const hudEraEl = document.getElementById('hud-era');
+    const eduInfoEl = document.getElementById('edu-info');
+    const dataPowerEl = document.getElementById('data-power');
+    const dataFoodEl = document.getElementById('data-food');
+    const dataHealthEl = document.getElementById('data-health');
+    const dataMarketEl = document.getElementById('data-market');
+    const dataRestaurantEl = document.getElementById('data-restaurant');
+    const dataClothingEl = document.getElementById('data-clothing');
+    const dataIndustrialEl = document.getElementById('data-industrial');
+    const dataIncomeEl = document.getElementById('data-income');
+    const dataAiEl = document.getElementById('data-ai');
+    const armyInfoEl = document.getElementById('army-info');
+    let hudTimer = 0;   // 数据面板刷新节流
+
+    function countTilesOf(type) {
+      let n = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === type) n++;
+        }
+      }
+      return n;
+    }
+
+    function updateHUD(dt) {
+      hudTimer += dt;
+      if (hudTimer < 0.5) return;   // 每 0.5 秒刷新一次即可
+      hudTimer = 0;
+
+      // 模组事件：每 0.5 秒一次的全局节拍
+      if (window.GameMod) GameMod.events.emit('secondTick', { money, population, food, sick, science });
+      updateTutorial();   // 新手引导自动推进（按条件自动进入下一步）
+
+      // 常驻：时代 + 资金 + 人口
+      hudEraEl.textContent = getEraName();
+      hudMoneyEl.textContent = `💰 金钱：${Math.round(money)}`;
+      hudMoneyEl.style.color = money < 0 ? '#f87171' : '';
+      hudPopEl.textContent = `👥 人口：${Math.floor(population)}`;
+
+      // 数据菜单
+      const p = getPowerInfo();
+      if (p.gen < p.use) dataPowerEl.textContent = `${p.gen} / ${p.use} · 🔴 买电中（-${((p.use - p.gen) * BUY_PRICE).toFixed(2)}/秒）`;
+      else if (p.gen > p.use) dataPowerEl.textContent = `${p.gen} / ${p.use} · 🟢 卖电中（+${((p.gen - p.use) * SELL_PRICE).toFixed(2)}/秒）`;
+      else dataPowerEl.textContent = `${p.gen} / ${p.use} · 电力自足`;
+
+      const f = foodStats;
+      let foodExtra = '';
+      if (f.imported > 0) foodExtra = ` · 🔴 进口 -${f.imported.toFixed(1)}/秒 · ⚠️ 饥荒（人口停止增长）`;
+      else if (f.sold > 0) foodExtra = ` · 🟢 售粮 +${f.sold.toFixed(1)}/秒`;
+      else if (food === 0 && population > 0 && f.produced < f.consumed) foodExtra = ' · ⚠️ 存粮耗尽（人口停止增长）';
+      dataFoodEl.textContent = `存粮 ${Math.floor(food)}/${FOOD_STORAGE_CAP} · 产 ${f.produced}/秒 · 耗 ${f.consumed.toFixed(1)}/秒${foodExtra}`;
+      updateGranaries();
+      const fam = foodStats.imported > 0;
+      dataHealthEl.textContent = `生病 ${Math.floor(sick)} 人 · 治愈 ${healthStats.healed.toFixed(1)}/秒${fam ? ' · ⚠️ 饥荒加速传播' : ''}`;
+
+      dataMarketEl.textContent = `${countTilesOf(TILE.MARKET)} 格`;
+      dataRestaurantEl.textContent = `${countTilesOf(TILE.RESTAURANT)} 格`;
+      dataClothingEl.textContent = `${countTilesOf(TILE.CLOTHING)} 格`;
+
+      let indCount = 0;
+      let indIncome = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.INDUSTRIAL) {
+            indCount++;
+            indIncome += Math.min(countShopsNearby(r, c), INDUSTRY_MAX_SHOPS) * INDUSTRY_SUPPLY_INCOME;
+          }
+        }
+      }
+      dataIndustrialEl.textContent = `${indCount} 格（供货 +${indIncome} 元/10秒）`;
+      dataIncomeEl.textContent = `+${getCityIncome().toFixed(1)} 元/10秒`;
+
+      // 军队与 AI 对手
+      let soldierCount = 0;
+      let tankCount = 0;
+      let armyUpkeep = 0;
+      for (const s of soldiers) {
+        if (s.kind === 'tank') tankCount++;
+        else if (s.kind === 'soldier') soldierCount++;
+        armyUpkeep += s.upkeep != null ? s.upkeep : (s.kind === 'tank' ? TANK_UPKEEP : SOLDIER_UPKEEP);
+      }
+      armyInfoEl.textContent = `士兵：${soldierCount} · 坦克：${tankCount} · 军费 ${armyUpkeep.toFixed(1)} 元/秒`;
+      eduInfoEl.textContent = `科技值 ${Math.floor(science)} · 学堂 ${countTilesOf(TILE.SCHOOL)} 栋 · 大学 ${countTilesOf(TILE.UNIVERSITY)} 栋 · 学生 ${eduStats.students} · 毕业池 ${Math.floor(graduates)} · 大学生 ${uniStudents.length} · 人才 ${elites}`;
+      let aiBuildings = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiMap[r][c] !== TILE.EMPTY) aiBuildings++;
+        }
+      }
+      const aiPower = aiGetPowerInfo();
+      const aiEraName = ['🏭 近现代', '⚙️ 工业时代', '🌐 现代'][aiEraIndex()];
+      dataAiEl.textContent = `金钱 ${Math.round(aiMoney)} · 建筑 ${aiBuildings} 格 · 电力 ${aiPower.gen}/${aiPower.use} · ${aiEraName}`;
+
+      // 金钱明细悬浮框开着的话同步刷新
+      if (!moneyTooltipEl.classList.contains('hidden')) updateMoneyTooltip();
+    }
+
+    // 金钱收支明细（元/秒）：商铺 + 工业供货 + 电力 + 军费 + 教育
+    function getMoneyBreakdown() {
+      const shop = getShopIncome() / 10;
+      const supply = getSupplyIncome() / 10;
+      const power = powerStats.gridSell + powerStats.tradeSell - powerStats.buyCost;
+      let armyCost = 0;
+      for (const s of soldiers) {
+        armyCost += s.upkeep != null ? s.upkeep : (s.kind === 'tank' ? TANK_UPKEEP : SOLDIER_UPKEEP);
+      }
+      const army = -armyCost;
+      const hospital = -healthStats.upkeep;
+      const edu = eduStats.tuitionIncome - eduStats.upkeep;
+      return { shop, supply, power, army, edu, hospital };
+    }
+
+    // 悬浮在“金钱”上时显示：哪项在赚钱、哪项在扣钱
+    function updateMoneyTooltip() {
+      const b = getMoneyBreakdown();
+      const total = b.shop + b.supply + b.power + b.army + b.edu + b.hospital;
+      const rows = [
+        '<div class="tt-head">💸 收支明细（元/秒）</div>',
+        `<div class="tt-row"><span>🛒 商铺收入</span><span class="tt-pos">+${b.shop.toFixed(2)}</span></div>`,
+        `<div class="tt-row"><span>🏭 工业供货</span><span class="tt-pos">+${b.supply.toFixed(2)}</span></div>`,
+      ];
+      if (powerStats.tradeSell > 0) rows.push(`<div class="tt-row"><span>🤝 卖电给AI</span><span class="tt-pos">+${powerStats.tradeSell.toFixed(2)}</span></div>`);
+      if (powerStats.gridSell > 0) rows.push(`<div class="tt-row"><span>⚡ 卖电（电网）</span><span class="tt-pos">+${powerStats.gridSell.toFixed(2)}</span></div>`);
+      if (powerStats.buyCost > 0) rows.push(`<div class="tt-row"><span>⚡ 买电</span><span class="tt-neg">-${powerStats.buyCost.toFixed(2)}</span></div>`);
+      if (foodStats.sold > 0) rows.push(`<div class="tt-row"><span>🌾 售粮</span><span class="tt-pos">+${foodStats.sold.toFixed(2)}</span></div>`);
+      if (foodStats.imported > 0) rows.push(`<div class="tt-row"><span>📦 进口粮食</span><span class="tt-neg">-${foodStats.imported.toFixed(2)}</span></div>`);
+      if (eduStats.tuitionIncome > 0) rows.push(`<div class="tt-row"><span>🎓 学费收入</span><span class="tt-pos">+${eduStats.tuitionIncome.toFixed(2)}</span></div>`);
+      if (eduStats.upkeep > 0) rows.push(`<div class="tt-row"><span>🏫 教育开支</span><span class="tt-neg">-${eduStats.upkeep.toFixed(2)}</span></div>`);
+      if (healthStats.upkeep > 0) rows.push(`<div class="tt-row"><span>🏥 医院开支</span><span class="tt-neg">-${healthStats.upkeep.toFixed(2)}</span></div>`);
+      if (b.army < 0) rows.push(`<div class="tt-row"><span>🎖️ 军费</span><span class="tt-neg">${b.army.toFixed(2)}</span></div>`);
+      rows.push(`<div class="tt-row tt-total"><span>合计</span><span class="${total >= 0 ? 'tt-pos' : 'tt-neg'}">${total >= 0 ? '+' : ''}${total.toFixed(2)}</span></div>`);
+      moneyTooltipEl.innerHTML = rows.join('');
+    }
+
+    hudMoneyEl.addEventListener('mouseenter', () => {
+      updateMoneyTooltip();
+      moneyTooltipEl.classList.remove('hidden');
+    });
+    hudMoneyEl.addEventListener('mouseleave', () => {
+      moneyTooltipEl.classList.add('hidden');
+    });
+
+    // --- 供货可视化：被工业供货的店铺亮起橙色悬浮标记（轻微上下浮动） ---
+    function updateSupplyMarkers(time) {
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (!SHOP_TILES.has(map[r][c])) continue;
+          const mesh = tileMeshes[r][c];
+          const marker = mesh && mesh.userData.marker;
+          if (!marker) continue;
+          const supplied = isSupplied(r, c);
+          marker.visible = supplied;
+          if (supplied) {
+            const baseY = BUILDING_STYLE[map[r][c]].h + 2.2;
+            marker.position.y = baseY + Math.sin(time * 2 + r * 3 + c * 5) * 0.4;
+          }
+        }
+      }
+    }
+
+    // --- 飘字动画：拆除退款等提示文字从建筑位置升起并淡出 ---
+    const floatTexts = [];   // { sprite, age, life, vy }
+
+    function spawnFloatText(text, x, z, color = '#4ade80') {
+      const canvas2d = document.createElement('canvas');
+      canvas2d.width = 256;
+      canvas2d.height = 96;
+      const g = canvas2d.getContext('2d');
+      g.font = 'bold 46px "Microsoft YaHei", sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = color;
+      g.fillText(text, 128, 48);
+      const texture = new THREE.CanvasTexture(canvas2d);
+      const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(9, 3.4, 1);
+      sprite.position.set(x, 7, z);
+      scene.add(sprite);
+      floatTexts.push({ sprite, age: 0, life: 1.4, vy: 3 });
+    }
+
+    function updateFloatTexts(dt) {
+      for (let i = floatTexts.length - 1; i >= 0; i--) {
+        const f = floatTexts[i];
+        f.age += dt;
+        f.sprite.position.y += f.vy * dt;
+        f.sprite.material.opacity = Math.max(0, 1 - f.age / f.life);
+        if (f.age >= f.life) {
+          scene.remove(f.sprite);
+          f.sprite.material.map.dispose();
+          f.sprite.material.dispose();
+          floatTexts.splice(i, 1);
+        }
+      }
+    }
+
+    // ========== 时代科技与教育：科技值 → 古代 / 近现代 / 现代 ==========
+    const ERA_INDUSTRIAL = 800;     // 科技值达到后进入工业时代
+    const ERA_TODAY = 3000;         // 科技值达到后进入现代
+    const SCHOOL_UPKEEP = 0.5;      // 每栋学堂维护费 元/秒
+    const UNI_UPKEEP = 1.0;         // 每栋大学维护费 元/秒
+    const SCHOOL_CAP = 50;          // 每栋学堂学生上限
+    const SCHOOL_RATIO = 0.2;       // 入学率 = 人口 × 该比例（有上限）
+    const TUITION_MAX = 10;         // 学费上限 元
+    const PRIMARY_GRAD_TIME = 60;   // 初级学堂毕业时间（秒）
+    const UNI_CAP = 60;             // 每栋大学招生上限
+    const UNI_GRAD_TIME = 120;      // 大学毕业时间（秒）
+    const ELITE_CAP = 100;          // 人才上限
+    let science = 0;                // 累计科技值
+    let graduates = 0;              // 初级学堂毕业人数（大学招生池）
+    let elites = 0;                 // 大学毕业人才
+    let tuition = 0;                // 学费（0~10，越高入学越少）
+    const uniStudents = [];         // 在册大学生 [{ studied }]
+    let eduTimer = 0;
+    let eduStats = { tuitionIncome: 0, upkeep: 0, students: 0 };
+
+    function getEraIndex() {
+      if (science < ERA_INDUSTRIAL) return 0;   // 近现代
+      if (science < ERA_TODAY) return 1;        // 工业时代
+      return 2;                                 // 现代
+    }
+    function getEraName() {
+      return ['🏭 近现代', '⚙️ 工业时代', '🌐 现代'][getEraIndex()];
+    }
+
+    // 教育系统推进（每秒结算一次）
+    function updateEducation(dt) {
+      eduTimer += dt;
+      if (eduTimer < 1) return;
+      eduTimer -= 1;
+
+      const popCount = population;
+      const schools = countTilesOf(TILE.SCHOOL);
+      const unis = countTilesOf(TILE.UNIVERSITY);
+
+      // 初级学堂：人越多学生越多（有上限），学费越高入学越少
+      const ratio = Math.max(0, 1 - tuition / TUITION_MAX);
+      const students = Math.floor(Math.min(schools * SCHOOL_CAP, popCount * SCHOOL_RATIO * ratio));
+      science += students * 0.06;
+      graduates += students / PRIMARY_GRAD_TIME;
+      const tuitionIncome = students * tuition * 0.02;
+      money += tuitionIncome;
+
+      // 大学（近现代解锁）：只有初级学堂毕业的人能读，读满毕业时间变人才
+      if (unis > 0) {
+        const enrollCap = unis * UNI_CAP;
+        while (uniStudents.length < enrollCap && graduates >= 1) {
+          graduates -= 1;
+          uniStudents.push({ studied: 0 });
+        }
+        science += uniStudents.length * 0.15;
+        for (let i = uniStudents.length - 1; i >= 0; i--) {
+          uniStudents[i].studied += 1;
+          if (uniStudents[i].studied >= UNI_GRAD_TIME) {
+            uniStudents.splice(i, 1);
+            if (elites < ELITE_CAP) elites += 1;
+          }
+        }
+      }
+      science += elites * 0.3;
+
+      const upkeep = schools * SCHOOL_UPKEEP + unis * UNI_UPKEEP;
+      money -= upkeep;
+      eduStats = { tuitionIncome, upkeep, students };
+    }
+
+    // ========== AI 对手经济：慢慢发展自己的城市 ==========
+    // 各建筑血量（我方军队攻打的目标）
+    const AI_BUILDING_HP = {
+      [TILE.ROAD]: 100, [TILE.RESIDENTIAL]: 200, [TILE.MARKET]: 150,
+      [TILE.RESTAURANT]: 150, [TILE.CLOTHING]: 150, [TILE.INDUSTRIAL]: 300,
+      [TILE.SOLAR]: 80, [TILE.COAL]: 500,
+      [TILE.BARRACKS]: 300, [TILE.SCHOOL]: 200, [TILE.UNIVERSITY]: 400,
+      [TILE.FARM]: 120,
+      [TILE.GOV]: 800, [TILE.GOVYARD]: 300,
+      [TILE.HOSPITAL]: 250, [TILE.WALL]: 100,
+    };
+    const AI_BUILD_INTERVAL = 6;      // AI 每 6 秒做一次建设决策
+    const AI_TRADE_PRICE = 0.4;       // 我们卖给 AI 的电价（元/单位/秒，比卖电网划算）
+    let aiShopTimer = SHOP_TICK;
+    let aiBuildTimer = AI_BUILD_INTERVAL;
+
+    function aiCountTilesOf(type) {
+      let n = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiMap[r][c] === type) n++;
+        }
+      }
+      return n;
+    }
+
+    function aiIsAdjacentToRoad(r, c) {
+      const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      return dirs.some(([dr, dc]) => {
+        const nr = r + dr;
+        const nc = c + dc;
+        return nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && aiMap[nr][nc] === TILE.ROAD;
+      });
+    }
+
+    function aiCanPlaceAt(r, c, type) {
+      if (type === TILE.ROAD) return true;
+      if (type === TILE.RESIDENTIAL || SHOP_TILES.has(type) || type === TILE.INDUSTRIAL) {
+        return aiIsAdjacentToRoad(r, c);
+      }
+      return true;
+    }
+
+    function aiGetPowerInfo() {
+      let gen = 0;
+      let use = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const tile = aiMap[r][c];
+          if (tile === TILE.SOLAR) gen += SOLAR_OUTPUT;
+          else if (tile === TILE.COAL) gen += COAL_OUTPUT;
+          use += POWER_USE[tile] || 0;
+        }
+      }
+      return { gen, use };
+    }
+
+    function aiNearbyPopulation(r, c) {
+      let pop = 0;
+      for (let dr = -SHOP_RADIUS; dr <= SHOP_RADIUS; dr++) {
+        for (let dc = -SHOP_RADIUS; dc <= SHOP_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && aiMap[nr][nc] === TILE.RESIDENTIAL) {
+            pop += RESIDENTS_PER_HOUSE;
+          }
+        }
+      }
+      return pop;
+    }
+
+    function aiIsSupplied(r, c) {
+      for (let dr = -SUPPLY_RADIUS; dr <= SUPPLY_RADIUS; dr++) {
+        for (let dc = -SUPPLY_RADIUS; dc <= SUPPLY_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && aiMap[nr][nc] === TILE.INDUSTRIAL) return true;
+        }
+      }
+      return false;
+    }
+
+    function aiCountShopsNearby(r, c) {
+      let n = 0;
+      for (let dr = -SUPPLY_RADIUS; dr <= SUPPLY_RADIUS; dr++) {
+        for (let dc = -SUPPLY_RADIUS; dc <= SUPPLY_RADIUS; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && SHOP_TILES.has(aiMap[nr][nc])) n++;
+        }
+      }
+      return n;
+    }
+
+    function aiShopProfit(type, r, c) {
+      const p = SHOP_PROFIT[type];
+      if (!p) return 0;
+      return Math.min(p.cap, p.base + p.perPop * aiNearbyPopulation(r, c));
+    }
+
+    function aiGetShopIncome() {
+      let total = 0;
+      const hasFarm = aiCountTilesOf(TILE.FARM) > 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (SHOP_TILES.has(aiMap[r][c]) && aiOwner[r][c] !== 'player' && (aiCapture[r][c] ?? 0) === 0 && aiIsAdjacentToRoad(r, c)) {
+            let profit = aiShopProfit(aiMap[r][c], r, c) * (aiIsSupplied(r, c) ? 1 + SUPPLY_BONUS : 1);
+            if (aiMap[r][c] === TILE.RESTAURANT && !hasFarm) profit *= 0.5;
+            total += profit;
+          }
+        }
+      }
+      return total;
+    }
+
+    function aiGetSupplyIncome() {
+      let total = 0;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiMap[r][c] === TILE.INDUSTRIAL && aiOwner[r][c] !== 'player' && (aiCapture[r][c] ?? 0) === 0 && aiIsAdjacentToRoad(r, c)) {
+            total += Math.min(aiCountShopsNearby(r, c), INDUSTRY_MAX_SHOPS) * INDUSTRY_SUPPLY_INCOME;
+          }
+        }
+      }
+      return total;
+    }
+
+    function aiSetHp(r, c, type) {
+      aiHp[r][c] = AI_BUILDING_HP[type] ?? 0;
+    }
+
+    function aiBuildTileMesh(r, c) {
+      if (aiTileMeshes[r][c]) {
+        scene.remove(aiTileMeshes[r][c]);
+        aiTileMeshes[r][c] = null;
+      }
+      const mesh = createTileMesh(r, c, aiMap[r][c]);
+      if (mesh) {
+        mesh.position.x += AI_OFFSET_X;
+        aiTileMeshes[r][c] = mesh;
+        scene.add(mesh);
+        // 被我方占领的建筑挂上蓝旗
+        if (aiOwner[r][c] === 'player') addOccupationFlag(mesh, aiMap[r][c]);
+      }
+    }
+
+    function aiRefreshTile(r, c) {
+      aiBuildTileMesh(r, c);
+      // 相邻道路也要更新（共享边的沥青/人行道衔接）
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && aiMap[nr][nc] === TILE.ROAD) {
+          aiBuildTileMesh(nr, nc);
+        }
+      }
+    }
+
+    // 占领旗帜：白色旗杆 + 蓝色旗帜
+    function addOccupationFlag(mesh, type) {
+      const h = (BUILDING_STYLE[type] || {}).h || 8;
+      const flag = new THREE.Group();
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.15, 5, 6),
+        new THREE.MeshLambertMaterial({ color: 0xf8fafc })
+      );
+      pole.position.y = 2.5;
+      const cloth = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 1.0, 0.1),
+        new THREE.MeshLambertMaterial({ color: 0x3b82f6 })
+      );
+      cloth.position.set(0.9, 4.4, 0);
+      flag.add(pole, cloth);
+      flag.position.set(2.5, h, 2.5);
+      mesh.add(flag);
+    }
+
+    // 全量重建 AI 地图模型（读档后调用）
+    function aiRebuildAllTiles() {
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiTileMeshes[r][c]) {
+            scene.remove(aiTileMeshes[r][c]);
+            aiTileMeshes[r][c] = null;
+          }
+        }
+      }
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          aiRefreshTile(r, c);
+        }
+      }
+    }
+
+    // --- AI 智能找地与建设决策 ---
+    function aiHousesNear(r, c, radius) {
+      let n = 0;
+      for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && aiMap[nr][nc] === TILE.RESIDENTIAL) n++;
+        }
+      }
+      return n;
+    }
+
+    function aiShopsNear(r, c, radius) {
+      let n = 0;
+      for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && SHOP_TILES.has(aiMap[nr][nc])) n++;
+        }
+      }
+      return n;
+    }
+
+    // 在满足条件的空格里随机挑一个
+    function aiFindSpot(pred) {
+      const spots = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiMap[r][c] !== TILE.EMPTY) continue;
+          if (pred(r, c)) spots.push({ r, c });
+        }
+      }
+      if (spots.length === 0) return null;
+      return spots[Math.floor(Math.random() * spots.length)];
+    }
+
+    // AI 建设决策：贴路网、聚片区地智能发展
+    function aiBuildDecision() {
+      const { gen, use } = aiGetPowerInfo();
+      const shortfall = Math.max(0, use - gen);
+      const roads = aiCountTilesOf(TILE.ROAD);
+      const houses = aiCountTilesOf(TILE.RESIDENTIAL);
+      const shops = aiCountTilesOf(TILE.MARKET) + aiCountTilesOf(TILE.RESTAURANT) + aiCountTilesOf(TILE.CLOTHING);
+      const industries = aiCountTilesOf(TILE.INDUSTRIAL);
+      const farms = aiCountTilesOf(TILE.FARM);
+
+      // 1) 决定建什么
+      let type;
+      if (roads < 3) type = TILE.ROAD;
+      else if (aiCountTilesOf(TILE.BARRACKS) === 0 && aiMoney >= 500) type = TILE.BARRACKS;
+      else if (houses < 6) type = TILE.RESIDENTIAL;
+      else if (shops < Math.ceil(houses / 2)) {
+        type = [TILE.MARKET, TILE.RESTAURANT, TILE.CLOTHING][Math.floor(Math.random() * 3)];
+      } else if (industries < Math.max(1, Math.ceil(shops / 3))) type = TILE.INDUSTRIAL;
+      else if (farms < Math.max(1, Math.ceil(houses / 4))) type = TILE.FARM;
+      else if (aiCountTilesOf(TILE.WALL) < 6 && aiMoney >= 100) type = TILE.WALL;
+      else if (shortfall > 0) type = aiMoney >= 350 ? TILE.COAL : TILE.SOLAR;
+      else if (houses < 14) type = TILE.RESIDENTIAL;
+      else {
+        const pool = [TILE.ROAD, TILE.RESIDENTIAL, TILE.MARKET, TILE.RESTAURANT, TILE.CLOTHING, TILE.INDUSTRIAL];
+        type = pool[Math.floor(Math.random() * pool.length)];
+      }
+
+      // 2) 智能选地
+      let spot = null;
+      if (type === TILE.ROAD) {
+        // 道路：贴着现有路网延伸（保持连通），起步阶段从地图中部开始
+        spot = aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c))
+            || aiFindSpot((r, c) => r >= 15 && r <= 21 && c >= 20 && c <= 27);
+      } else if (type === TILE.RESIDENTIAL) {
+        // 住宅：贴路且靠近现有住宅（聚成小区）
+        spot = aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c) && aiHousesNear(r, c, 2) > 0)
+            || aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c));
+      } else if (type === TILE.INDUSTRIAL) {
+        // 工业：贴路且靠近店铺（能供货赚钱）
+        spot = aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c) && aiShopsNear(r, c, SUPPLY_RADIUS) > 0)
+            || aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c));
+      } else if (SHOP_TILES.has(type)) {
+        // 店铺：贴路且周边有住宅（能赚钱）
+        spot = aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c) && aiHousesNear(r, c, SHOP_RADIUS) > 0)
+            || aiFindSpot((r, c) => aiIsAdjacentToRoad(r, c));
+      } else {
+        // 发电 / 军营 / 农场 / 围墙：任意空地
+        spot = aiFindSpot(() => true);
+      }
+
+      if (!spot) return;   // 没找到合适位置，下轮再试
+      const cost = BUILDING_COST[type] ?? 0;
+      if (aiMoney < cost) return;
+      aiMoney -= cost;
+      aiMap[spot.r][spot.c] = type;
+      aiSetHp(spot.r, spot.c, type);
+      aiRefreshTile(spot.r, spot.c);
+    }
+
+    // AI 经济推进（每帧调用）：收入结算 + 建设决策
+    function updateAISim(dt) {
+      aiScience += dt * 0.5;   // AI 自己慢慢研究科技
+      aiShopTimer -= dt;
+      if (aiShopTimer <= 0) {
+        aiShopTimer += SHOP_TICK;
+        aiMoney += aiGetShopIncome() + aiGetSupplyIncome();
+      }
+      aiBuildTimer -= dt;
+      if (aiBuildTimer <= 0) {
+        aiBuildTimer = AI_BUILD_INTERVAL;
+        aiBuildDecision();
+        // AI 招募士兵（有军营且有钱）
+        if (aiSoldiers.length < AI_SOLDIER_MAX && aiCountTilesOf(TILE.BARRACKS) > 0 && aiMoney >= SOLDIER_COST) {
+          aiMoney -= SOLDIER_COST;
+          spawnAISoldier();
+        }
+      }
+    }
+
+    // ========== 军队：大头兵（HP100、手枪伤害50），养兵很花钱 ==========
+    const SOLDIER_COST = 150;        // 招募费用
+    const SOLDIER_UPKEEP = 0.8;      // 军费：元/秒/兵
+    const SOLDIER_HP_MAX = 100;
+    const PISTOL_DAMAGE = 50;
+    const SOLDIER_SPEED = 6;
+    const ATTACK_RANGE = 4;
+    const ATTACK_COOLDOWN = 1.0;
+    const soldiers = [];
+    const selectedSoldiers = new Set();   // 多选（框选）军队
+    let armyTimer = 0;
+    const CAPTURE_TIME = 5;               // 占领一座建筑所需时间（秒）
+    // 坦克：重装单位，能摧毁围墙
+    const TANK_COST = 600;
+    const TANK_UPKEEP = 2;               // 元/秒/辆
+    const TANK_HP = 300;
+    const TANK_DAMAGE = 120;
+    const TANK_SPEED = 4;
+    const TANK_RANGE = 6;
+    const TANK_COOLDOWN = 1.5;
+    // 不同时代的军队战斗力（近现代 → 工业时代 → 现代）
+    const ERA_SOLDIER_STATS = [
+      { damage: 50, hp: 100 },   // 近现代
+      { damage: 75, hp: 150 },   // 工业时代
+      { damage: 100, hp: 200 },  // 现代
+    ];
+    let aiScience = 0;                    // AI 也会慢慢研究科技（决定 AI 军队强度）
+    function aiEraIndex() {
+      if (aiScience < ERA_INDUSTRIAL) return 0;
+      if (aiScience < ERA_TODAY) return 1;
+      return 2;
+    }
+
+    function createSoldierModel(uniformColor = 0x16a34a, withRing = true) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.6, 1.0, 8),
+        new THREE.MeshLambertMaterial({ color: uniformColor })
+      );
+      body.position.y = 0.5;
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 10, 8),
+        new THREE.MeshLambertMaterial({ color: 0xfcd9b8 })
+      );
+      head.position.y = 1.25;
+      const helmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.36, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshLambertMaterial({ color: 0x14532d })
+      );
+      helmet.position.y = 1.32;
+      const gun = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.22, 1.1),
+        new THREE.MeshLambertMaterial({ color: 0x1f2937 })
+      );
+      gun.position.set(0.55, 0.9, 0.25);
+      g.add(body, head, helmet, gun);
+
+      // 选中光环（默认隐藏）
+      if (withRing) {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(1.3, 0.12, 8, 24),
+          new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9 })
+        );
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.08;
+        ring.visible = false;
+        g.add(ring);
+        g.userData.ring = ring;
+      }
+
+      // 隐形点击球（方便鼠标选中）
+      const hit = new THREE.Mesh(
+        new THREE.SphereGeometry(2.4, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      g.add(hit);
+      g.userData.hit = hit;
+      return g;
+    }
+
+    function selectSoldier(s, additive = false) {
+      if (!additive) {
+        for (const x of selectedSoldiers) x.group.userData.ring.visible = false;
+        selectedSoldiers.clear();
+      } else if (selectedSoldiers.has(s)) {
+        // Ctrl 点击已选中的：取消选中
+        s.group.userData.ring.visible = false;
+        selectedSoldiers.delete(s);
+        return;
+      }
+      if (s) {
+        selectedSoldiers.add(s);
+        s.group.userData.ring.visible = true;
+        statusEl.textContent = `🪖 已选中 ${selectedSoldiers.size} 名士兵（HP ${s.hp}/${SOLDIER_HP_MAX}）：点击地面移动 / 点击对方军队攻击 / 点击对方建筑占领，Esc 取消`;
+      }
+    }
+
+    // 全选所有军队并显示总兵力
+    function selectAllSoldiers() {
+      for (const x of selectedSoldiers) x.group.userData.ring.visible = false;
+      selectedSoldiers.clear();
+      let totalHp = 0;
+      let totalDmg = 0;
+      for (const s of soldiers) {
+        selectedSoldiers.add(s);
+        s.group.userData.ring.visible = true;
+        totalHp += s.hp;
+        totalDmg += s.damage;
+      }
+      if (soldiers.length === 0) {
+        statusEl.textContent = '🎖️ 当前没有军队：点击“🎖️ 军队”菜单招募士兵';
+        return;
+      }
+      statusEl.textContent = `🎖️ 总兵力：${soldiers.length} 名士兵 · 总血量 ${totalHp} · 总攻击 ${totalDmg}（点击地面移动 / 点击敌军攻击 / 点击对方建筑占领）`;
+    }
+
+    // 坦克模型：车体 + 炮塔 + 炮管 + 履带
+    function createTankModel() {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.2, 4.4), new THREE.MeshLambertMaterial({ color: 0x3f6212 }));
+      body.position.y = 0.9;
+      const turret = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 2.2), new THREE.MeshLambertMaterial({ color: 0x365314 }));
+      turret.position.y = 1.85;
+      const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.2), new THREE.MeshLambertMaterial({ color: 0x1f2937 }));
+      barrel.position.set(0, 1.9, 2.4);
+      const trackGeo = new THREE.BoxGeometry(0.8, 1.0, 4.6);
+      const trackMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+      const t1 = new THREE.Mesh(trackGeo, trackMat);
+      t1.position.set(-1.6, 0.5, 0);
+      const t2 = t1.clone();
+      t2.position.x = 1.6;
+      g.add(body, turret, barrel, t1, t2);
+      // 选中光环
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(1.6, 0.14, 8, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.9 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.1;
+      ring.visible = false;
+      g.add(ring);
+      g.userData.ring = ring;
+      // 隐形点击球
+      const hit = new THREE.Mesh(
+        new THREE.SphereGeometry(2.8, 8, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      g.add(hit);
+      g.userData.hit = hit;
+      return g;
+    }
+
+    // 招募坦克（也需要军营）
+    function recruitTank() {
+      const barracksCells = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.BARRACKS) barracksCells.push({ r, c });
+        }
+      }
+      if (barracksCells.length === 0) {
+        showError('❌ 需要先建造军营');
+        return;
+      }
+      if (money < TANK_COST) {
+        showError('❌ 金钱不足');
+        return;
+      }
+      money -= TANK_COST;
+      const g = createTankModel();
+      const cell = barracksCells[Math.floor(Math.random() * barracksCells.length)];
+      const x = cell.c * CELL + CELL / 2;
+      const z = cell.r * CELL + CELL / 2;
+      g.position.set(x, 0, z);
+      scene.add(g);
+      const s = {
+        group: g, kind: 'tank', hp: TANK_HP, maxHp: TANK_HP, damage: TANK_DAMAGE,
+        speed: TANK_SPEED, range: TANK_RANGE, cooldownMax: TANK_COOLDOWN,
+        upkeep: TANK_UPKEEP,
+        mode: 'idle',
+        targetX: x, targetZ: z,
+        target: null, targetCell: null, targetWall: null, cooldown: 0,
+        guideLine: makeGuideLine(),
+      };
+      soldiers.push(s);
+      selectSoldier(s, true);
+    }
+
+    // 世界坐标 → 格子（判定围墙阻挡用）
+    function cellAtWorld(x, z) {
+      const r = Math.floor(z / CELL);
+      if (r < 0 || r >= GRID_ROWS) return null;
+      if (x < GRID_COLS * CELL) {
+        const c = Math.floor(x / CELL);
+        if (c < 0 || c >= GRID_COLS) return null;
+        return { side: 'own', r, c, isWall: map[r][c] === TILE.WALL };
+      }
+      const c = Math.floor((x - AI_OFFSET_X) / CELL);
+      if (c < 0 || c >= GRID_COLS) return null;
+      return { side: 'ai', r, c, isWall: aiMap[r][c] === TILE.WALL };
+    }
+
+    function recruitSoldier() {
+      const barracksCells = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.BARRACKS) barracksCells.push({ r, c });
+        }
+      }
+      if (barracksCells.length === 0) {
+        showError('❌ 需要先建造军营');
+        statusEl.textContent = '❌ 需要先建造军营（在“🏗️ 建筑”菜单里），士兵会从军营出征';
+        return;
+      }
+      if (money < SOLDIER_COST) {
+        showError('❌ 金钱不足');
+        statusEl.textContent = `❌ 金钱不足：招募士兵需要 ${SOLDIER_COST} 元`;
+        return;
+      }
+      money -= SOLDIER_COST;
+      const stats = ERA_SOLDIER_STATS[getEraIndex()];   // 时代决定战斗力
+      const g = createSoldierModel(0x16a34a, true);
+      const cell = barracksCells[Math.floor(Math.random() * barracksCells.length)];
+      const x = cell.c * CELL + CELL / 2;
+      const z = cell.r * CELL + CELL / 2;
+      g.position.set(x, 0, z);
+      scene.add(g);
+      const s = {
+        group: g, kind: 'soldier', hp: stats.hp, maxHp: stats.hp, damage: stats.damage,
+        speed: SOLDIER_SPEED, range: ATTACK_RANGE, cooldownMax: ATTACK_COOLDOWN,
+        upkeep: SOLDIER_UPKEEP,
+        mode: 'idle',
+        targetX: x, targetZ: z,
+        target: null, targetCell: null, targetWall: null, cooldown: 0,
+        guideLine: makeGuideLine(),
+      };
+      soldiers.push(s);
+      selectSoldier(s, true);
+    }
+
+    function pickSoldier(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(soldiers.map((s) => s.group.userData.hit), false);
+      if (hits.length === 0) return null;
+      return soldiers.find((s) => s.group.userData.hit === hits[0].object) ?? null;
+    }
+
+    // ========== AI 军队：红衣士兵，保卫领土 ==========
+    const aiSoldiers = [];
+    const AI_SOLDIER_MAX = 8;
+    const AI_AGGRO_RANGE = 16;
+
+    function spawnAISoldier() {
+      const g = createSoldierModel(0xdc2626, false);   // 红衣敌军
+      // 出生在 AI 军营旁
+      let bx = AI_OFFSET_X + (GRID_COLS * CELL) / 2;
+      let bz = (GRID_ROWS * CELL) / 2;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (aiMap[r][c] === TILE.BARRACKS) {
+            bx = AI_OFFSET_X + c * CELL + CELL / 2 + (Math.random() - 0.5) * 4;
+            bz = r * CELL + CELL / 2 + (Math.random() - 0.5) * 4;
+          }
+        }
+      }
+      g.position.set(bx, 0, bz);
+      scene.add(g);
+      const stats = ERA_SOLDIER_STATS[aiEraIndex()];
+      aiSoldiers.push({ group: g, hp: stats.hp, damage: stats.damage, target: null, cooldown: 0, detourT: 0, detourDir: 1 });
+    }
+
+    function killAISoldier(s) {
+      const idx = aiSoldiers.indexOf(s);
+      if (idx >= 0) aiSoldiers.splice(idx, 1);
+      scene.remove(s.group);
+    }
+
+    function killPlayerSoldier(s) {
+      const idx = soldiers.indexOf(s);
+      if (idx >= 0) soldiers.splice(idx, 1);
+      if (selectedSoldiers.has(s)) selectedSoldiers.delete(s);
+      if (s.guideLine) scene.remove(s.guideLine);
+      scene.remove(s.group);
+    }
+
+    function pickAISoldier(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(aiSoldiers.map((s) => s.group.userData.hit), false);
+      if (hits.length === 0) return null;
+      return aiSoldiers.find((s) => s.group.userData.hit === hits[0].object) ?? null;
+    }
+
+    // AI 士兵：追击并攻击进入其领土的我方士兵
+    function updateAISoldiers(dt) {
+      for (const s of aiSoldiers) {
+        let best = null;
+        let bestD = AI_AGGRO_RANGE;
+        for (const p of soldiers) {
+          const d = Math.hypot(p.group.position.x - s.group.position.x, p.group.position.z - s.group.position.z);
+          if (d < bestD) {
+            bestD = d;
+            best = p;
+          }
+        }
+        if (!best) {
+          s.target = null;
+          // 尝试占领玩家政府大楼
+          if (govPlaced && govCapture < 1) {
+            const gx = govC * CELL + CELL / 2;
+            const gz = govR * CELL + CELL / 2;
+            const d = Math.hypot(s.group.position.x - gx, s.group.position.z - gz);
+            if (d < 25) {
+              if (d > ATTACK_RANGE) {
+                const step = Math.min(SOLDIER_SPEED * dt, d);
+                s.group.position.x += ((gx - s.group.position.x) / d) * step;
+                s.group.position.z += ((gz - s.group.position.z) / d) * step;
+              } else {
+                govCapture = Math.min(1, govCapture + dt / GOV_CAPTURE_TIME);
+              }
+            }
+          }
+          continue;
+        }
+        s.target = best;
+        const dx = best.group.position.x - s.group.position.x;
+        const dz = best.group.position.z - s.group.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist > ATTACK_RANGE) {
+          const step = Math.min(SOLDIER_SPEED * dt, dist);
+          const nx = s.group.position.x + (dx / dist) * step;
+          const nz = s.group.position.z + (dz / dist) * step;
+          const wc = cellAtWorld(nx, nz);
+          if (wc && wc.isWall && wc.side === 'own') {
+            // 被玩家围墙挡住：绕行
+            s.detourDir = s.detourDir ? -s.detourDir : 1;
+            s.group.position.x += (-(dz / dist)) * step * s.detourDir;
+            s.group.position.z += ((dx / dist)) * step * s.detourDir;
+          } else {
+            s.group.position.x = nx;
+            s.group.position.z = nz;
+          }
+        } else {
+          s.cooldown -= dt;
+          if (s.cooldown <= 0) {
+            s.cooldown = ATTACK_COOLDOWN;
+            best.hp -= s.damage;
+            spawnFloatText(`-${s.damage}`, best.group.position.x, best.group.position.z, '#f87171');
+            if (best.hp <= 0) {
+              killPlayerSoldier(best);
+              s.target = null;
+              statusEl.textContent = '💀 我方一名士兵阵亡！';
+            }
+          }
+        }
+      }
+    }
+
+    // 红色引导线：显示选中士兵的移动目标（只有我方可见）
+    function makeGuideLine() {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xef4444 }));
+      line.visible = false;
+      scene.add(line);
+      return line;
+    }
+
+    function updateGuideLine(s) {
+      if (!s.guideLine) return;
+      const moving = (s.mode === 'move' || s.mode === 'fight' || s.mode === 'capture' || s.mode === 'attackWall') && selectedSoldiers.has(s);
+      if (!moving) {
+        s.guideLine.visible = false;
+        return;
+      }
+      let tx;
+      let tz;
+      if (s.mode === 'fight' && s.target) {
+        tx = s.target.group.position.x;
+        tz = s.target.group.position.z;
+      } else if (s.mode === 'capture' && s.targetCell) {
+        tx = AI_OFFSET_X + s.targetCell.c * CELL + CELL / 2;
+        tz = s.targetCell.r * CELL + CELL / 2;
+      } else if (s.mode === 'attackWall' && s.targetWall) {
+        tx = s.targetWall.side === 'own'
+          ? s.targetWall.c * CELL + CELL / 2
+          : AI_OFFSET_X + s.targetWall.c * CELL + CELL / 2;
+        tz = s.targetWall.r * CELL + CELL / 2;
+      } else {
+        tx = s.targetX;
+        tz = s.targetZ;
+      }
+      const arr = s.guideLine.geometry.attributes.position.array;
+      arr[0] = s.group.position.x; arr[1] = 0.5; arr[2] = s.group.position.z;
+      arr[3] = tx; arr[4] = 0.5; arr[5] = tz;
+      s.guideLine.geometry.attributes.position.needsUpdate = true;
+      s.guideLine.visible = true;
+    }
+
+    function updateSoldiers(dt) {
+      // 医院列表（受伤单位回血用）
+      for (const s of soldiers) {
+        updateGuideLine(s);
+        // 政府大楼受威胁：空闲单位自动回防
+        if (govPlaced && govCapture > 0.02 && s.mode === 'idle') {
+          s.target = null;
+          s.targetCell = null;
+          s.targetWall = null;
+          s.mode = 'move';
+          s.targetX = govC * CELL + CELL / 2;
+          s.targetZ = govR * CELL + CELL / 2;
+        }
+        // 靠近政府大楼的单位参与夺回
+        if (govPlaced && govCapture > 0) {
+          const gx = govC * CELL + CELL / 2;
+          const gz = govR * CELL + CELL / 2;
+          if (Math.hypot(s.group.position.x - gx, s.group.position.z - gz) <= 4) {
+            govCapture = Math.max(0, govCapture - dt / GOV_CAPTURE_TIME);
+          }
+        }
+        // 医院治疗受伤单位
+        if (s.hp < s.maxHp) {
+          for (let r = 0; r < GRID_ROWS; r++) {
+            let healed = false;
+            for (let c = 0; c < GRID_COLS; c++) {
+              if (map[r][c] !== TILE.HOSPITAL) continue;
+              const hx = c * CELL + CELL / 2;
+              const hz = r * CELL + CELL / 2;
+              if (Math.hypot(s.group.position.x - hx, s.group.position.z - hz) <= HOSPITAL_HEAL_RANGE) {
+                s.hp = Math.min(s.maxHp, s.hp + HOSPITAL_SOLDIER_HEAL * dt);
+                healed = true;
+                break;
+              }
+            }
+            if (healed) break;
+          }
+        }
+        if (s.mode === 'move') {
+          const dx = s.targetX - s.group.position.x;
+          const dz = s.targetZ - s.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist < 0.5) { s.mode = 'idle'; continue; }
+          const step = Math.min(s.speed * dt, dist);
+          const nx = s.group.position.x + (dx / dist) * step;
+          const nz = s.group.position.z + (dz / dist) * step;
+          const wc = cellAtWorld(nx, nz);
+          if (wc && wc.isWall) {
+            if (s.kind === 'tank') {
+              // 坦克：改打挡路的围墙
+              s.targetWall = wc;
+              s.mode = 'attackWall';
+            } else {
+              s.mode = 'idle';
+              statusEl.textContent = '🧱 士兵被围墙挡住（派坦克摧毁围墙）';
+            }
+            continue;
+          }
+          s.group.position.x = nx;
+          s.group.position.z = nz;
+          if (s.kind === 'tank') s.group.rotation.y = Math.atan2(dx, dz);
+        } else if (s.mode === 'fight' && s.target) {
+          // 只能攻击对方军队，不能攻击建筑物
+          const t = s.target;
+          if (t.hp <= 0) {
+            s.target = null;
+            s.mode = 'idle';
+            continue;
+          }
+          const dx = t.group.position.x - s.group.position.x;
+          const dz = t.group.position.z - s.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > s.range) {
+            const step = Math.min(s.speed * dt, dist);
+            s.group.position.x += (dx / dist) * step;
+            s.group.position.z += (dz / dist) * step;
+            if (s.kind === 'tank') s.group.rotation.y = Math.atan2(dx, dz);
+          } else {
+            s.cooldown -= dt;
+            if (s.cooldown <= 0) {
+              s.cooldown = s.cooldownMax;
+              t.hp -= s.damage;
+              spawnFloatText(`-${s.damage}`, t.group.position.x, t.group.position.z, '#f87171');
+              if (t.hp <= 0) {
+                killAISoldier(t);
+                s.target = null;
+                s.mode = 'idle';
+                statusEl.textContent = '💥 击毙一名敌方士兵！';
+              }
+            }
+          }
+        } else if (s.mode === 'capture' && s.targetCell) {
+          // 占领对方建筑：占领期间收益 50%，彻底占领后 100%（坦克不能占领）
+          if (s.kind === 'tank') {
+            s.mode = 'idle';
+            s.targetCell = null;
+            continue;
+          }
+          const { r, c } = s.targetCell;
+          if (aiMap[r][c] === TILE.EMPTY || aiOwner[r][c] === 'player') {
+            s.mode = 'idle';
+            s.targetCell = null;
+            continue;
+          }
+          const bx = AI_OFFSET_X + c * CELL + CELL / 2;
+          const bz = r * CELL + CELL / 2;
+          const dx = bx - s.group.position.x;
+          const dz = bz - s.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > s.range) {
+            const step = Math.min(s.speed * dt, dist);
+            s.group.position.x += (dx / dist) * step;
+            s.group.position.z += (dz / dist) * step;
+          } else {
+            aiCapture[r][c] = Math.min(1, aiCapture[r][c] + dt / CAPTURE_TIME);
+            if (aiCapture[r][c] >= 1) {
+              aiOwner[r][c] = 'player';
+              aiRefreshTile(r, c);   // 挂上占领旗帜
+              s.mode = 'idle';
+              s.targetCell = null;
+              statusEl.textContent = `🚩 已彻底占领对方${TILE_NAMES[aiMap[r][c]]}！收益全部归我方`;
+              spawnFloatText('🚩 占领！', bx, bz, '#4ade80');
+              if (window.GameMod) GameMod.events.emit('captured', { r, c, type: aiMap[r][c] });
+            }
+          }
+        } else if (s.mode === 'attackWall' && s.targetWall) {
+          // 坦克轰围墙
+          const w = s.targetWall;
+          const wx = w.side === 'own' ? w.c * CELL + CELL / 2 : AI_OFFSET_X + w.c * CELL + CELL / 2;
+          const wz = w.r * CELL + CELL / 2;
+          const dx = wx - s.group.position.x;
+          const dz = wz - s.group.position.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > s.range) {
+            const step = Math.min(s.speed * dt, dist);
+            const nx = s.group.position.x + (dx / dist) * step;
+            const nz = s.group.position.z + (dz / dist) * step;
+            const wc2 = cellAtWorld(nx, nz);
+            if (wc2 && wc2.isWall && !(wc2.side === w.side && wc2.r === w.r && wc2.c === w.c)) {
+              s.targetWall = wc2;   // 前面还有别的墙，先打它
+            } else {
+              s.group.position.x = nx;
+              s.group.position.z = nz;
+              s.group.rotation.y = Math.atan2(dx, dz);
+            }
+          } else {
+            s.cooldown -= dt;
+            if (s.cooldown <= 0) {
+              s.cooldown = s.cooldownMax;
+              if (w.side === 'own') mapHp[w.r][w.c] -= s.damage;
+              else aiHp[w.r][w.c] -= s.damage;
+              spawnFloatText(`-${s.damage}`, wx, wz, '#f87171');
+              const hpLeft = w.side === 'own' ? mapHp[w.r][w.c] : aiHp[w.r][w.c];
+              if (hpLeft <= 0) {
+                if (w.side === 'own') {
+                  map[w.r][w.c] = TILE.EMPTY;
+                  mapHp[w.r][w.c] = 0;
+                  refreshTile(w.r, w.c);
+                } else {
+                  aiMap[w.r][w.c] = TILE.EMPTY;
+                  aiHp[w.r][w.c] = 0;
+                  aiRefreshTile(w.r, w.c);
+                }
+                s.targetWall = null;
+                s.mode = 'idle';
+                statusEl.textContent = '💥 围墙已被坦克摧毁！';
+                if (window.GameMod) GameMod.events.emit('wallDestroyed', { side: w.side, r: w.r, c: w.c });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function updateArmyEconomy(dt) {
+      armyTimer += dt;
+      if (armyTimer < 1) return;
+      armyTimer -= 1;
+      let cost = 0;
+      for (const s of soldiers) {
+        cost += s.upkeep != null ? s.upkeep : (s.kind === 'tank' ? TANK_UPKEEP : SOLDIER_UPKEEP);
+      }
+      money -= cost;
+    }
+
+    // ========== 框选军队（按住左键拖出矩形） ==========
+    const marqueeEl = document.getElementById('marquee');
+    let marqueeActive = false;
+    let marqueeStart = { x: 0, y: 0 };
+
+    // 士兵在世界坐标 → 屏幕像素坐标（框选判定用）
+    function soldierScreenPos(s) {
+      const v = s.group.position.clone().project(camera);
+      const rect = renderer.domElement.getBoundingClientRect();
+      return {
+        x: ((v.x + 1) / 2) * rect.width,
+        y: ((1 - v.y) / 2) * rect.height,
+      };
+    }
+
+    function updateMarquee(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const x1 = Math.min(marqueeStart.x, x);
+      const y1 = Math.min(marqueeStart.y, y);
+      marqueeEl.style.left = x1 + 'px';
+      marqueeEl.style.top = y1 + 'px';
+      marqueeEl.style.width = Math.abs(x - marqueeStart.x) + 'px';
+      marqueeEl.style.height = Math.abs(y - marqueeStart.y) + 'px';
+    }
+
+    function finishMarquee() {
+      marqueeActive = false;
+      marqueeEl.style.display = 'none';
+      const x1 = parseFloat(marqueeEl.style.left);
+      const y1 = parseFloat(marqueeEl.style.top);
+      const x2 = x1 + parseFloat(marqueeEl.style.width);
+      const y2 = y1 + parseFloat(marqueeEl.style.height);
+      // 清空旧选择，选中框内士兵
+      for (const x of selectedSoldiers) x.group.userData.ring.visible = false;
+      selectedSoldiers.clear();
+      let n = 0;
+      for (const s of soldiers) {
+        const p = soldierScreenPos(s);
+        if (p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2) {
+          selectedSoldiers.add(s);
+          s.group.userData.ring.visible = true;
+          n++;
+        }
+      }
+      statusEl.textContent = n > 0
+        ? `🪖 框选了 ${n} 名士兵：点击地面移动 / 点击对方军队攻击 / 点击对方建筑占领`
+        : '未框选到士兵';
+    }
+
+    // ========== 工业运输卡车：工业品沿道路运往店铺（可视化） ==========
+    const TRUCK_INTERVAL = 3;      // 每 3 秒尝试发一趟车
+    const TRUCK_CAP = 12;          // 同屏卡车上限
+    const TRUCK_SPEED = 9;         // 卡车速度（单位/秒）
+    const trucks = [];             // { group, path, idx }
+    let truckTimer = 0;
+
+    function createTruckModel() {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 1.2, 3.6),
+        new THREE.MeshLambertMaterial({ color: 0xe2e8f0 })
+      );
+      body.position.y = 0.8;
+      const cabin = new THREE.Mesh(
+        new THREE.BoxGeometry(2.0, 1.0, 1.6),
+        new THREE.MeshLambertMaterial({ color: 0x3b82f6 })
+      );
+      cabin.position.set(0, 1.2, -1.6);
+      g.add(body, cabin);
+      const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.3, 10);
+      const wheelMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+      for (const [wx, wz] of [[-0.9, 1.2], [0.9, 1.2], [-0.9, -1.2], [0.9, -1.2]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.45, wz);
+        g.add(wheel);
+      }
+      return g;
+    }
+
+    // BFS 在道路网上找路径（起终点都必须是道路格）
+    function findRoadPath(fromR, fromC, toR, toC) {
+      if (map[fromR][fromC] !== TILE.ROAD || map[toR][toC] !== TILE.ROAD) return null;
+      if (fromR === toR && fromC === toC) return [[fromR, fromC]];
+      const prev = new Map();
+      const queue = [[fromR, fromC]];
+      const visited = new Set([fromR * GRID_COLS + fromC]);
+      while (queue.length) {
+        const [r, c] = queue.shift();
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+          const k = nr * GRID_COLS + nc;
+          if (visited.has(k) || map[nr][nc] !== TILE.ROAD) continue;
+          visited.add(k);
+          prev.set(k, [r, c]);
+          queue.push([nr, nc]);
+        }
+      }
+      if (!prev.has(toR * GRID_COLS + toC)) return null;
+      const path = [[toR, toC]];
+      let k = toR * GRID_COLS + toC;
+      while (k !== fromR * GRID_COLS + fromC) {
+        const [pr, pc] = prev.get(k);
+        path.push([pr, pc]);
+        k = pr * GRID_COLS + pc;
+      }
+      path.reverse();
+      return path;
+    }
+
+    // 找某建筑旁边的一个道路格
+    function roadNeighborOf(r, c) {
+      const opts = [];
+      for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.ROAD) {
+          opts.push({ r: nr, c: nc });
+        }
+      }
+      if (opts.length === 0) return null;
+      return opts[Math.floor(Math.random() * opts.length)];
+    }
+
+    // 派一辆卡车：工业 → 供货半径内某店铺（必须道路连通，否则不发车）
+    function spawnTruck() {
+      if (trucks.length >= TRUCK_CAP) return;
+      const industries = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (map[r][c] === TILE.INDUSTRIAL && isAdjacentToRoad(r, c)) industries.push({ r, c });
+        }
+      }
+      if (industries.length === 0) return;
+      const ind = industries[Math.floor(Math.random() * industries.length)];
+      const targets = [];
+      for (let dr = -SUPPLY_RADIUS; dr <= SUPPLY_RADIUS; dr++) {
+        for (let dc = -SUPPLY_RADIUS; dc <= SUPPLY_RADIUS; dc++) {
+          const nr = ind.r + dr;
+          const nc = ind.c + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+          if (SHOP_TILES.has(map[nr][nc]) && isAdjacentToRoad(nr, nc)) targets.push({ r: nr, c: nc });
+        }
+      }
+      if (targets.length === 0) return;
+      const shop = targets[Math.floor(Math.random() * targets.length)];
+      const start = roadNeighborOf(ind.r, ind.c);
+      const end = roadNeighborOf(shop.r, shop.c);
+      if (!start || !end) return;
+      const path = findRoadPath(start.r, start.c, end.r, end.c);
+      if (!path) return;
+      const g = createTruckModel();
+      g.position.set(start.c * CELL + CELL / 2, 0.45, start.r * CELL + CELL / 2);
+      scene.add(g);
+      trucks.push({ group: g, path, idx: 1 });
+    }
+
+    function updateTrucks(dt) {
+      truckTimer += dt;
+      if (truckTimer >= TRUCK_INTERVAL) {
+        truckTimer = 0;
+        spawnTruck();
+      }
+      for (let i = trucks.length - 1; i >= 0; i--) {
+        const t = trucks[i];
+        if (t.idx >= t.path.length) {
+          scene.remove(t.group);
+          trucks.splice(i, 1);
+          continue;
+        }
+        const cell = t.path[t.idx];
+        const tx = cell.c * CELL + CELL / 2;
+        const tz = cell.r * CELL + CELL / 2;
+        const dx = tx - t.group.position.x;
+        const dz = tz - t.group.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.05) {
+          t.idx += 1;
+          continue;
+        }
+        t.group.rotation.y = Math.atan2(dx, dz);
+        const step = Math.min(TRUCK_SPEED * dt, dist);
+        t.group.position.x += (dx / dist) * step;
+        t.group.position.z += (dz / dist) * step;
+      }
+    }
+
+    // ========== 鼠标拾取：射线求交地面 → 格子索引 ==========
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    function pickCell(e) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects([ground, aiGround]);
+      if (hits.length === 0) return null;
+      const p = hits[0].point;
+      const z = p.z;
+      if (p.x < GRID_COLS * CELL) {
+        // 我方地图
+        const c = Math.floor(p.x / CELL);
+        const r = Math.floor(z / CELL);
+        if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) return null;
+        return { side: 'own', r, c, worldX: c * CELL + CELL / 2, worldZ: r * CELL + CELL / 2 };
+      }
+      // AI 地图
+      const ax = p.x - AI_OFFSET_X;
+      const c = Math.floor(ax / CELL);
+      const r = Math.floor(z / CELL);
+      if (ax < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) return null;
+      return { side: 'ai', r, c, worldX: AI_OFFSET_X + c * CELL + CELL / 2, worldZ: r * CELL + CELL / 2 };
+    }
+
+    // ========== 铺设 / 拆除 ==========
+    // 住宅与店铺必须紧邻道路（任一边即可）；道路/工业/发电建筑无限制
+    function isAdjacentToRoad(r, c) {
+      const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      return dirs.some(([dr, dc]) => {
+        const nr = r + dr;
+        const nc = c + dc;
+        return nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.ROAD;
+      });
+    }
+
+    // 住宅小区连通链：沿住宅一路找，看能否连到道路
+    function isResidentialChainConnected(r, c) {
+      const visited = new Set();
+      const stack = [[r, c]];
+      const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+      while (stack.length) {
+        const [cr, cc] = stack.pop();
+        const k = cr * GRID_COLS + cc;
+        if (visited.has(k)) continue;
+        visited.add(k);
+        for (const [dr, dc] of dirs) {
+          const nr = cr + dr;
+          const nc = cc + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+          if (map[nr][nc] === TILE.ROAD) return true;
+          if (map[nr][nc] === TILE.RESIDENTIAL) stack.push([nr, nc]);
+        }
+      }
+      return false;
+    }
+
+    // 模组注册的“需临路”方块集合
+    const MOD_TILE_ROAD_REQUIRED = new Set();
+
+    function canPlaceAt(r, c, type) {
+      if (type === TILE.ROAD) return true;
+      const needsRoad = type === TILE.RESIDENTIAL || SHOP_TILES.has(type) || type === TILE.INDUSTRIAL || type === TILE.SCHOOL || type === TILE.UNIVERSITY || type === TILE.HOSPITAL || MOD_TILE_ROAD_REQUIRED.has(type);
+      if (!needsRoad) return true;   // 太阳能 / 火电 / 军营：无道路限制
+      if (type === TILE.RESIDENTIAL) {
+        // 住宅：一边有路即可；或旁边有"连到路"的住宅，可以成片延伸
+        const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        return dirs.some(([dr, dc]) => {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) return false;
+          if (map[nr][nc] === TILE.ROAD) return true;
+          if (map[nr][nc] === TILE.RESIDENTIAL) return isResidentialChainConnected(nr, nc);
+          return false;
+        });
+      }
+      return isAdjacentToRoad(r, c);
+    }
+
+    // 大学校园：需要 3×3 开阔空地，校园任一边缘紧邻道路即可
+    function canPlaceUniversity(r, c) {
+      const cells = [];
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) return false;
+          if (map[nr][nc] !== TILE.EMPTY) return false;
+          cells.push([nr, nc]);
+        }
+      }
+      // 3×3 内任意一格旁边有路即可
+      return cells.some(([nr, nc]) => isAdjacentToRoad(nr, nc));
+    }
+
+    // 放置 3×3 大学校园（中心主楼 + 四周校园用地），整体进入施工
+    function placeUniversity(r, c) {
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          map[nr][nc] = (dr === 0 && dc === 0) ? TILE.UNIVERSITY : TILE.CAMPUS;
+          refreshTile(nr, nc);
+        }
+      }
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          startConstruction(r + dr, c + dc, (dr === 0 && dc === 0) ? TILE.UNIVERSITY : TILE.CAMPUS);
+        }
+      }
+    }
+
+    // 政府大楼：3×3 开阔空地
+    function canPlaceGov(r, c) {
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) return false;
+          if (map[nr][nc] !== TILE.EMPTY) return false;
+        }
+      }
+      return true;
+    }
+
+    // 放置 3×3 政府大楼
+    function placeGovernment(r, c) {
+      govPlaced = true;
+      govR = r;
+      govC = c;
+      govCapture = 0;
+      govPlaceMode = false;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+          map[nr][nc] = (dr === 0 && dc === 0) ? TILE.GOV : TILE.GOVYARD;
+          refreshTile(nr, nc);
+        }
+      }
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          startConstruction(r + dr, c + dc, (dr === 0 && dc === 0) ? TILE.GOV : TILE.GOVYARD);
+        }
+      }
+      govGroupRef = tileMeshes[r][c];
+      statusEl.textContent = '🏛️ 政府大楼开始施工！城市正式开始运作';
+    }
+
+    let isPainting = false;
+    let lastPainted = null;
+    let strokePushed = false;   // 本次拖动是否已记录撤销快照（一次拖动算一步）
+
+    function paintAt(cell) {
+      if (!cell || selectedType === null) return;
+      if (lastPainted && lastPainted.r === cell.r && lastPainted.c === cell.c) return;
+      lastPainted = cell;
+      // 拆除模式（触屏用）：点击拆除建筑
+      if (selectedType === 'demolish') {
+        demolishAt(cell);
+        return;
+      }
+      // 开局自选政府大楼位置
+      if (govPlaceMode) {
+        if (selectedType !== TILE.GOV) {
+          showError('🏛️ 请先选择政府大楼位置');
+          return;
+        }
+        if (cell.side !== 'own' || !canPlaceGov(cell.r, cell.c)) {
+          showError('❌ 需要 3×3 开阔空地');
+          return;
+        }
+        if (!strokePushed) {
+          pushUndo();
+          strokePushed = true;
+        }
+        placeGovernment(cell.r, cell.c);
+        return;
+      }
+      // 政府大楼被占领：夺回前不能建造
+      if (govCapture >= 1) {
+        showError('🏛️ 政府大楼被占领！夺回前无法建造');
+        return;
+      }
+      // AI 领土不能直接建造（派兵攻打或卖电交易）
+      if (cell.side === 'ai') {
+        showError('⚠️ 对方领土，不能建造');
+        statusEl.textContent = '❌ 这是对方领土：不能直接建造（可派兵攻打，或把余电卖给它）';
+        return;
+      }
+
+      // 未解锁土地不能建设
+      const lockInfo = isLockedRow(cell.r);
+      if (lockInfo && cell.side === 'own') {
+        showError(`🔒 ${lockInfo.label}土地未解锁`);
+        statusEl.textContent = `🔒 这片土地未解锁：在“🏗️ 建筑”菜单点击解锁按钮（${lockInfo.cost} 元）`;
+        return;
+      }
+
+      if (map[cell.r][cell.c] === selectedType) return;
+
+      // 政府大楼：只能建一座
+      if (selectedType === TILE.GOV) {
+        if (govPlaced) {
+          showError('🏛️ 政府大楼已存在');
+          return;
+        }
+        if (!canPlaceGov(cell.r, cell.c)) {
+          showError('❌ 需要 3×3 开阔空地');
+          return;
+        }
+        if (!strokePushed) {
+          pushUndo();
+          strokePushed = true;
+        }
+        placeGovernment(cell.r, cell.c);
+        return;
+      }
+
+      // 大学：占地 3×3 的校园
+      if (selectedType === TILE.UNIVERSITY) {
+        if (!canPlaceUniversity(cell.r, cell.c)) {
+          showError('❌ 大学需要 3×3 开阔空地');
+          statusEl.textContent = '❌ 大学校园需要 3×3 的开阔空地（校园任一边紧邻道路），请换地方';
+          return;
+        }
+        const cost = BUILDING_COST[TILE.UNIVERSITY];
+        if (money < cost) {
+          showError('❌ 金钱不足');
+          statusEl.textContent = `❌ 金钱不足：建造大学校园需要 ${cost} 元（当前 ${Math.round(money)} 元）`;
+          return;
+        }
+        if (!strokePushed) {
+          pushUndo();
+          strokePushed = true;
+        }
+        money -= cost;
+        placeUniversity(cell.r, cell.c);
+        return;
+      }
+
+      // 住宅/店铺必须紧邻道路
+      if (!canPlaceAt(cell.r, cell.c, selectedType)) {
+        showError(`❌ ${TILE_NAMES[selectedType]}需要连接道路`);
+        statusEl.textContent = `❌ ${TILE_NAMES[selectedType]}必须连接道路（住宅可沿已连路的住宅延伸）`;
+        return;
+      }
+
+      // 花钱建筑：金钱不足时拒绝放置
+      const cost = BUILDING_COST[selectedType] ?? 0;
+      if (money < cost) {
+        showError('❌ 金钱不足');
+        statusEl.textContent = `❌ 金钱不足：${TILE_NAMES[selectedType]}需要 ${cost} 元（当前 ${Math.round(money)} 元）`;
+        return;
+      }
+
+      if (!strokePushed) {
+        pushUndo();      // 整次拖动只记一步
+        strokePushed = true;
+      }
+      if (constructionMap[cell.r][cell.c]) cancelConstruction(cell.r, cell.c);   // 覆盖施工中的格子
+      map[cell.r][cell.c] = selectedType;
+      if (selectedType === TILE.WALL) mapHp[cell.r][cell.c] = WALL_HP;
+      money -= cost;
+      refreshTile(cell.r, cell.c);
+      refreshRoadNeighbors(cell.r, cell.c);   // 相邻道路更新衔接
+      startConstruction(cell.r, cell.c, selectedType);   // 进入施工（道路即时完成）
+      if (window.GameMod) GameMod.events.emit('placed', { type: selectedType, r: cell.r, c: cell.c });
+    }
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;   // 只处理左键
+      // 1) 点击士兵：选中（Ctrl/Shift 加选）
+      const hitSoldier = pickSoldier(e);
+      if (hitSoldier) {
+        selectSoldier(hitSoldier, e.ctrlKey || e.shiftKey);
+        return;
+      }
+      // 1.5) 点击军营：显示总兵力并全选军队
+      const barCell = pickCell(e);
+      if (barCell && barCell.side === 'own' && map[barCell.r][barCell.c] === TILE.BARRACKS) {
+        selectAllSoldiers();
+        return;
+      }
+      // 2) 已有选中士兵：点击地面 = 移动；点击对方士兵 = 攻击；点击对方建筑 = 占领
+      if (selectedSoldiers.size > 0) {
+        const aiTarget = pickAISoldier(e);
+        if (aiTarget) {
+          for (const s of selectedSoldiers) {
+            s.targetCell = null;
+            s.target = aiTarget;
+            s.mode = 'fight';
+          }
+          statusEl.textContent = `🪖 攻击命令：目标敌方士兵（HP ${aiTarget.hp}）`;
+          return;
+        }
+        const cell = pickCell(e);
+        if (cell) {
+          // 点击围墙：坦克攻击，士兵打不动
+          const isWall = cell.side === 'own'
+            ? map[cell.r][cell.c] === TILE.WALL
+            : aiMap[cell.r][cell.c] === TILE.WALL;
+          if (isWall) {
+            let anyTank = false;
+            for (const s of selectedSoldiers) {
+              if (s.kind === 'tank') {
+                anyTank = true;
+                s.target = null;
+                s.targetCell = null;
+                s.targetWall = { side: cell.side, r: cell.r, c: cell.c };
+                s.mode = 'attackWall';
+              }
+            }
+            statusEl.textContent = anyTank ? '🛡️ 坦克收到命令：轰击围墙！' : '🧱 士兵无法攻击围墙（需要坦克）';
+            return;
+          }
+          if (cell.side === 'ai' && aiMap[cell.r][cell.c] !== TILE.EMPTY && aiOwner[cell.r][cell.c] !== 'player') {
+            for (const s of selectedSoldiers) {
+              if (s.kind === 'tank') continue;   // 坦克不占领
+              s.target = null;
+              s.targetCell = { r: cell.r, c: cell.c };
+              s.mode = 'capture';
+            }
+            statusEl.textContent = `🚩 占领命令：目标对方${TILE_NAMES[aiMap[cell.r][cell.c]]}（占领期间收益 50%）`;
+          } else {
+            for (const s of selectedSoldiers) {
+              s.target = null;
+              s.targetCell = null;
+              s.targetWall = null;
+              s.mode = 'move';
+              s.targetX = cell.worldX;
+              s.targetZ = cell.worldZ;
+            }
+            statusEl.textContent = cell.side === 'ai' ? '🪖 军队向对方领土进发！' : '🪖 军队移动中';
+          }
+        }
+        return;
+      }
+      // 3) 未选建筑工具：按住左键拖动框选军队
+      if (selectedType === null) {
+        marqueeActive = true;
+        const rect = renderer.domElement.getBoundingClientRect();
+        marqueeStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        marqueeEl.style.left = marqueeStart.x + 'px';
+        marqueeEl.style.top = marqueeStart.y + 'px';
+        marqueeEl.style.width = '0px';
+        marqueeEl.style.height = '0px';
+        marqueeEl.style.display = 'block';
+        return;
+      }
+      // 4) 正常铺设
+      isPainting = true;
+      paintAt(pickCell(e));
+      e.preventDefault();           // 防止拖动选中文本等默认行为
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      if (marqueeActive) {
+        finishMarquee();
+        return;
+      }
+      isPainting = false;
+      lastPainted = null;
+      strokePushed = false;   // 结束本次拖动
+    });
+
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      if (marqueeActive) {
+        updateMarquee(e);
+        return;
+      }
+      const cell = pickCell(e);
+      if (isPainting) paintAt(cell);   // 先铺设（更新拖动方向），再刷新预览
+      setHover(cell);
+      updateStatusText(cell);
+    });
+
+    renderer.domElement.addEventListener('mouseleave', () => {
+      setHover(null);
+      updateStatusText(null);
+    });
+
+    // 拆除建筑（右键 / 🧨 拆除模式共用）
+    function demolishAt(cell) {
+      if (!cell) return;
+      if (cell.side === 'ai') {
+        showError('🛡️ 对方建筑无法拆除');
+        statusEl.textContent = '🛡️ 对方建筑拆不掉：派兵去攻打吧';
+        return;
+      }
+      // 政府大楼：点击任意一格拆除整座（可重新放置）
+      if (map[cell.r][cell.c] === TILE.GOV || map[cell.r][cell.c] === TILE.GOVYARD) {
+        let gr = cell.r;
+        let gc = cell.c;
+        outerGov: for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = cell.r + dr;
+            const nc = cell.c + dc;
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.GOV) {
+              gr = nr;
+              gc = nc;
+              break outerGov;
+            }
+          }
+        }
+        pushUndo();
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = gr + dr;
+            const nc = gc + dc;
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS &&
+                (map[nr][nc] === TILE.GOV || map[nr][nc] === TILE.GOVYARD)) {
+              map[nr][nc] = TILE.EMPTY;
+              cancelConstruction(nr, nc);
+              refreshTile(nr, nc);
+            }
+          }
+        }
+        govPlaced = false;
+        govR = -1;
+        govC = -1;
+        govCapture = 0;
+        govGroupRef = null;
+        statusEl.textContent = '🏛️ 已拆除政府大楼（可在“🏗️ 建筑”菜单重新放置）';
+        return;
+      }
+
+      // 大学校园：点击任意一格拆除整座校园
+      if (map[cell.r][cell.c] === TILE.UNIVERSITY || map[cell.r][cell.c] === TILE.CAMPUS) {
+        let cr = cell.r;
+        let cc = cell.c;
+        outer: for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = cell.r + dr;
+            const nc = cell.c + dc;
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.UNIVERSITY) {
+              cr = nr;
+              cc = nc;
+              break outer;
+            }
+          }
+        }
+        pushUndo();
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = cr + dr;
+            const nc = cc + dc;
+            if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS &&
+                (map[nr][nc] === TILE.UNIVERSITY || map[nr][nc] === TILE.CAMPUS)) {
+              map[nr][nc] = TILE.EMPTY;
+              cancelConstruction(nr, nc);
+              refreshTile(nr, nc);
+            }
+          }
+        }
+        const refund = Math.floor(BUILDING_COST[TILE.UNIVERSITY] / 2);
+        money += refund;
+        statusEl.textContent = `♻️ 已拆除大学校园，半价回收 +${refund} 元`;
+        spawnFloatText(`+${refund} 元`, cell.worldX, cell.worldZ);
+        return;
+      }
+      if (map[cell.r][cell.c] !== TILE.EMPTY) {
+        const type = map[cell.r][cell.c];
+        pushUndo();   // 记录撤销快照（拆除前）
+        map[cell.r][cell.c] = TILE.EMPTY;
+        mapHp[cell.r][cell.c] = 0;
+        cancelConstruction(cell.r, cell.c);
+        refreshTile(cell.r, cell.c);
+        refreshRoadNeighbors(cell.r, cell.c);   // 相邻道路更新衔接
+        // 拆除半价回收
+        const refund = Math.floor((BUILDING_COST[type] ?? 0) / 2);
+        if (refund > 0) {
+          money += refund;
+          statusEl.textContent = `♻️ 已拆除${TILE_NAMES[type]}，半价回收 +${refund} 元`;
+          // 飘字动画：回收金额从拆除位置升起
+          spawnFloatText(
+            `+${refund} 元`,
+            cell.c * CELL + CELL / 2,
+            cell.r * CELL + CELL / 2
+          );
+        }
+      }
+      if (window.GameMod) GameMod.events.emit('demolished', { type, r: cell.r, c: cell.c });
+    }
+
+    renderer.domElement.addEventListener('contextmenu', (e) => {
+      e.preventDefault();   // 屏蔽浏览器右键菜单
+      demolishAt(pickCell(e));
+    });
+
+    // ========== 触屏支持：单指=鼠标操作，双指=相机手势 ==========
+    const activeTouches = new Map();   // identifier -> {x, y}
+    let touchCamStart = null;
+
+    function dispatchMouse(type, x, y, button) {
+      const ev = new MouseEvent(type, {
+        clientX: x, clientY: y, button,
+        bubbles: true, cancelable: true, view: window,
+      });
+      renderer.domElement.dispatchEvent(ev);
+    }
+
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      if (activeTouches.size === 1) {
+        const t = e.changedTouches[0];
+        dispatchMouse('mousedown', t.clientX, t.clientY, 0);
+      } else if (activeTouches.size === 2) {
+        // 第二根手指落下：结束当前操作，开始相机手势
+        dispatchMouse('mouseup', 0, 0, 0);
+        const [t1, t2] = [...activeTouches.values()];
+        touchCamStart = {
+          dist: Math.hypot(t1.x - t2.x, t1.y - t2.y),
+          angle: Math.atan2(t2.y - t1.y, t2.x - t1.x),
+          yaw: cam.yaw,
+          midX: (t1.x + t2.x) / 2,
+          midY: (t1.y + t2.y) / 2,
+          tx: cam.target.x,
+          tz: cam.target.z,
+        };
+      }
+    }, { passive: false });
+
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        if (activeTouches.has(t.identifier)) {
+          activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
+        }
+      }
+      if (activeTouches.size === 2 && touchCamStart) {
+        const [t1, t2] = [...activeTouches.values()];
+        const dist = Math.hypot(t1.x - t2.x, t1.y - t2.y);
+        const angle = Math.atan2(t2.y - t1.y, t2.x - t1.x);
+        // 双指捏合缩放
+        if (touchCamStart.dist > 0) {
+          cam.dist = Math.min(CAM_MAX_DIST, Math.max(CAM_MIN_DIST, cam.dist * (touchCamStart.dist / dist)));
+        }
+        // 双指旋转
+        cam.yaw = touchCamStart.yaw + (angle - touchCamStart.angle);
+        // 双指平移
+        const midX = (t1.x + t2.x) / 2;
+        const midY = (t1.y + t2.y) / 2;
+        const scale = cam.dist / 800;
+        const fx = -Math.sin(cam.yaw);
+        const fz = -Math.cos(cam.yaw);
+        const rx = -fz;
+        const rz = fx;
+        const dx = (midX - touchCamStart.midX) * scale;
+        const dy = (midY - touchCamStart.midY) * scale;
+        cam.target.x = touchCamStart.tx - dx * rx + dy * fx;
+        cam.target.z = touchCamStart.tz - dx * rz + dy * fz;
+        cam.target.x = Math.max(-100, Math.min(AI_OFFSET_X + GRID_COLS * CELL + 100, cam.target.x));
+        cam.target.z = Math.max(-100, Math.min(GRID_ROWS * CELL + 100, cam.target.z));
+      } else if (activeTouches.size === 1) {
+        const t = e.changedTouches[0];
+        dispatchMouse('mousemove', t.clientX, t.clientY, 0);
+      }
+    }, { passive: false });
+
+    renderer.domElement.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        activeTouches.delete(t.identifier);
+      }
+      if (touchCamStart && activeTouches.size < 2) {
+        touchCamStart = null;
+      }
+      if (activeTouches.size === 0) {
+        dispatchMouse('mouseup', 0, 0, 0);
+      } else if (activeTouches.size === 1) {
+        const [t] = [...activeTouches.values()];
+        dispatchMouse('mousemove', t.clientX, t.clientY, 0);
+      }
+    }, { passive: false });
+
+    // ========== 工具栏与菜单 ==========
+    const buildPanelEl = document.getElementById('build-panel');
+    const dataPanelEl = document.getElementById('data-panel');
+    const btnMenuBuild = document.getElementById('btn-menu-build');
+    const btnMenuData = document.getElementById('btn-menu-data');
+    btnMenuBuild.addEventListener('click', () => {
+      buildPanelEl.classList.toggle('hidden');
+      btnMenuBuild.classList.toggle('active');
+    });
+    btnMenuData.addEventListener('click', () => {
+      dataPanelEl.classList.toggle('hidden');
+      btnMenuData.classList.toggle('active');
+    });
+
+    // 🎖️ 军队菜单
+    const armyPanelEl = document.getElementById('army-panel');
+    const btnMenuArmy = document.getElementById('btn-menu-army');
+    btnMenuArmy.addEventListener('click', () => {
+      armyPanelEl.classList.toggle('hidden');
+      btnMenuArmy.classList.toggle('active');
+    });
+    document.getElementById('btn-recruit').addEventListener('click', recruitSoldier);
+    document.getElementById('btn-recruit-tank').addEventListener('click', recruitTank);
+
+    // 🔓 解锁扩展土地
+    function unlockLand(exp, group) {
+      if (!exp.locked) {
+        statusEl.textContent = `🔓 ${exp.label}土地已经解锁了`;
+        return;
+      }
+      if (money < exp.cost) {
+        showError('❌ 金钱不足');
+        return;
+      }
+      money -= exp.cost;
+      exp.locked = false;
+      group.visible = false;
+      showError(`🔓 ${exp.label}土地已解锁！`);
+      statusEl.textContent = `🔓 ${exp.label}土地已解锁（花费 ${exp.cost} 元），可以开始建设`;
+      if (window.GameMod) GameMod.events.emit('landUnlocked', { key: exp.label });
+    }
+    document.getElementById('btn-unlock-north').addEventListener('click', () => unlockLand(expansions.north, lockGroups.north));
+    document.getElementById('btn-unlock-south').addEventListener('click', () => unlockLand(expansions.south, lockGroups.south));
+
+    // ========== 🎓 新手引导教程（首次游玩自动开始，完成条件自动推进） ==========
+    const TUTORIAL_KEY = 'city3d_tutorial_done_v1';
+    const tutorialSteps = [
+      { text: '🏛️ 第一步：现在处于“政府大楼”选址模式，找一块 3×3 的空地点击放置——这是你城市的心脏，开局必须先建！', cond: () => govPlaced },
+      { text: '🛣️ 第二步：打开顶部“🏗️ 建筑”菜单选“道路”，按住鼠标拖动铺设路网（建筑必须贴着道路建）。', cond: () => countTilesOf(TILE.ROAD) >= 3 },
+      { text: '🏠 第三步：继续在建筑菜单选“住宅区”，贴着道路放置几栋——居民会慢慢搬进来（顶栏 👥 人口增长）。', cond: () => countTilesOf(TILE.RESIDENTIAL) >= 1 },
+      { text: '🌾 第四步：建一块“小麦农场”——没有粮食会闹饥荒，人口停止增长。农场不需要挨着道路。', cond: () => countTilesOf(TILE.FARM) >= 1 },
+      { text: '☀️ 第五步：建“太阳能板”发电——缺电要花钱买，有余电还能卖给 AI 赚钱。', cond: () => countTilesOf(TILE.SOLAR) + countTilesOf(TILE.COAL) >= 1 },
+      { text: '🛒 第六步：在住宅旁开一家“小型超市”——商铺按周边人口赚钱，悬停“💰金钱”可看收支明细。', cond: () => countTilesOf(TILE.MARKET) + countTilesOf(TILE.RESTAURANT) + countTilesOf(TILE.CLOTHING) >= 1 },
+      { text: '🏫 第七步：建“初级学堂”涨科技值，攒到 800 就能进入工业时代（军队更强、设施更多）。', cond: () => countTilesOf(TILE.SCHOOL) >= 1 },
+      { text: '🎖️ 第八步：建“军营”，到“🎖️军队”菜单招募士兵——点击军营可全选部队，框选指挥，点 AI 领土的军队开战、点敌方建筑占领！', cond: () => countTilesOf(TILE.BARRACKS) >= 1 && soldiers.length >= 1 },
+      { text: '🎉 你已经会玩了！更多玩法：打开“📊数据”看经营报表、⏪ 撤销误操作、💾 存档读档、🔓 买地扩建、🧱 围墙防守、🎓 大学培养人才……祝你建城愉快！', cond: null },
+    ];
+    let tutorialStep = -1;   // -1 = 未开始/关闭
+    const tutorialEl = document.getElementById('tutorial');
+    const tutorialTextEl = document.getElementById('tutorial-text');
+
+    function renderTutorial() {
+      if (tutorialStep < 0) {
+        tutorialEl.classList.add('hidden');
+        return;
+      }
+      if (tutorialStep >= tutorialSteps.length) {
+        tutorialEl.classList.add('hidden');
+        localStorage.setItem(TUTORIAL_KEY, '1');
+        statusEl.textContent = '🎉 新手引导完成！祝你建城愉快（顶部“📖 教程”可随时重看）';
+        return;
+      }
+      tutorialEl.classList.remove('hidden');
+      tutorialTextEl.textContent = `（${tutorialStep + 1}/${tutorialSteps.length}）${tutorialSteps[tutorialStep].text}`;
+    }
+    function nextTutorialStep() {
+      tutorialStep += 1;
+      renderTutorial();
+    }
+    function skipTutorial() {
+      tutorialStep = tutorialSteps.length;
+      renderTutorial();
+    }
+    function showTutorial() {
+      tutorialStep = 0;
+      renderTutorial();
+    }
+    function updateTutorial() {
+      if (tutorialStep < 0 || tutorialStep >= tutorialSteps.length) return;
+      const step = tutorialSteps[tutorialStep];
+      if (step.cond && step.cond()) nextTutorialStep();
+    }
+    document.getElementById('btn-tutorial-next').addEventListener('click', nextTutorialStep);
+    document.getElementById('btn-tutorial-skip').addEventListener('click', skipTutorial);
+    document.getElementById('btn-menu-tutorial').addEventListener('click', () => {
+      if (tutorialEl.classList.contains('hidden')) {
+        showTutorial();
+        statusEl.textContent = '📖 已重新打开新手引导（共 ' + tutorialSteps.length + ' 步，完成对应操作会自动推进）';
+      }
+    });
+    // 首次游玩自动开始（玩家主动跳过后不再弹出）
+    if (localStorage.getItem(TUTORIAL_KEY) !== '1') showTutorial();
+
+    // 🎓 教育菜单与学费滑块
+    const eduPanelEl = document.getElementById('edu-panel');
+    const btnMenuEdu = document.getElementById('btn-menu-edu');
+    btnMenuEdu.addEventListener('click', () => {
+      eduPanelEl.classList.toggle('hidden');
+      btnMenuEdu.classList.toggle('active');
+    });
+    const tuitionSliderEl = document.getElementById('tuition-slider');
+    const tuitionValueEl = document.getElementById('tuition-value');
+    tuitionSliderEl.addEventListener('input', () => {
+      tuition = parseFloat(tuitionSliderEl.value);
+      tuitionValueEl.textContent = `${tuition} 元`;
+      statusEl.textContent = `💰 学费已设为 ${tuition} 元（学费越高，入学人数越少）`;
+    });
+
+    // ⛶ 全屏切换（F11 式沉浸全屏，Esc 退出）
+    const btnFullscreen = document.getElementById('btn-fullscreen');
+    btnFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen();
+      }
+    });
+
+    function bindToolButton(btn) {
+      btn.addEventListener('click', () => {
+        toolButtons.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        // data-type="0"（取消选择）→ null；"demolish"（拆除模式）
+        if (btn.dataset.type === 'demolish') {
+          selectedType = 'demolish';
+        } else {
+          selectedType = Number(btn.dataset.type) || null;
+        }
+        updateStatusText(hoverCell);
+      });
+    }
+    const toolButtons = document.querySelectorAll('.tool-btn');
+    toolButtons.forEach(bindToolButton);
+
+    // ========== 存档与撤销（最多回 5 步） ==========
+    const MAX_UNDO = 5;
+    const undoStack = [];   // 每步保存：改动前的 { map, money } 快照
+    const SAVE_KEY = 'city3d_save_v1';
+    const btnUndo = document.getElementById('btn-undo');
+    const btnSave = document.getElementById('btn-save');
+    const btnLoad = document.getElementById('btn-load');
+
+    // 记录一步操作（在改动发生前调用）
+    function pushUndo() {
+      undoStack.push({ map: map.map((row) => row.slice()), money });
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+      btnUndo.textContent = `⏪ 撤销(${undoStack.length})`;
+    }
+
+    // 全量重建所有格子模型（读档 / 撤销后调用）
+    function rebuildAllTiles() {
+      clearAllConstruction();   // 撤销/读档时清空施工队列
+      // 移除所有旧模型（同一个小区模型被多个格子共享，去重后再移除）
+      const seen = new Set();
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const m = tileMeshes[r][c];
+          if (m && !seen.has(m)) {
+            seen.add(m);
+            scene.remove(m);
+          }
+          tileMeshes[r][c] = null;
+        }
+      }
+      // 重建：住宅按连通块合并成小区，其余单格重建
+      const visited = new Set();
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const k = r * GRID_COLS + c;
+          if (visited.has(k)) continue;
+          if (map[r][c] === TILE.RESIDENTIAL) {
+            const cells = [];
+            const stack = [[r, c]];
+            while (stack.length) {
+              const [cr, cc] = stack.pop();
+              const kk = cr * GRID_COLS + cc;
+              if (visited.has(kk)) continue;
+              visited.add(kk);
+              if (map[cr][cc] !== TILE.RESIDENTIAL) continue;
+              cells.push([cr, cc]);
+              for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+                const nr = cr + dr;
+                const nc = cc + dc;
+                if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS && map[nr][nc] === TILE.RESIDENTIAL) {
+                  stack.push([nr, nc]);
+                }
+              }
+            }
+            if (cells.length) {
+              const group = createResidentialGroup(cells);
+              for (const [cr, cc] of cells) tileMeshes[cr][cc] = group;
+              scene.add(group);
+            }
+            continue;
+          }
+          visited.add(k);
+          const mesh = createTileMesh(r, c);
+          if (mesh) {
+            tileMeshes[r][c] = mesh;
+            scene.add(mesh);
+          }
+        }
+      }
+      refreshRoadList();
+      syncWalkers();
+      hudTimer = 1;   // 立即刷新顶部栏与数据菜单
+    }
+
+    // 撤销上一步（最多 5 步）
+    function undo() {
+      if (undoStack.length === 0) {
+        statusEl.textContent = '⏪ 没有可撤销的步骤';
+        return;
+      }
+      const snap = undoStack.pop();
+      for (let r = 0; r < GRID_ROWS; r++) {
+        map[r] = snap.map[r].slice();
+      }
+      money = snap.money;
+      rebuildAllTiles();
+      // 重新定位政府大楼（撤销可能移除了它）
+      govPlaced = false;
+      govR = -1;
+      govC = -1;
+      govGroupRef = null;
+      govCapture = 0;
+      for (let r = 0; r < GRID_ROWS && !govPlaced; r++) {
+        for (let c = 0; c < GRID_COLS && !govPlaced; c++) {
+          if (map[r][c] === TILE.GOV) {
+            govPlaced = true;
+            govR = r;
+            govC = c;
+            govGroupRef = tileMeshes[r][c];
+          }
+        }
+      }
+      btnUndo.textContent = `⏪ 撤销(${undoStack.length})`;
+      statusEl.textContent = `⏪ 已撤销一步（还能撤销 ${undoStack.length} 步）`;
+    }
+
+    // 存档到 localStorage（我方 + AI + 科技教育全量保存）
+    function saveGame() {
+      try {
+        const data = {
+          map, money,
+          aiMap, aiMoney, aiHp, aiOwner, aiCapture,
+          food, aiFood, population,
+          sick,
+          govR, govC, govCapture, govPlaced, govPlaceMode,
+          expLocked: { north: expansions.north.locked, south: expansions.south.locked },
+          science, graduates, elites, tuition,
+          aiScience,
+          uniStudents: uniStudents.map((u) => ({ studied: u.studied })),
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+        statusEl.textContent = `💾 已存档（金钱 ${Math.round(money)} · 科技值 ${Math.floor(science)}）`;
+      } catch (err) {
+        statusEl.textContent = '❌ 存档失败：' + err.message;
+      }
+    }
+
+    // --- 自动存档：每 60 秒自动保存一次 ---
+    const AUTO_SAVE_INTERVAL = 60;
+    let autoSaveTimer = 0;
+    function updateAutoSave(dt) {
+      autoSaveTimer += dt;
+      if (autoSaveTimer < AUTO_SAVE_INTERVAL) return;
+      autoSaveTimer = 0;
+      saveGame();
+    }
+
+    // 从 localStorage 读档（我方 + AI + 科技教育全量恢复）
+    function loadGame() {
+      let data;
+      try {
+        data = JSON.parse(localStorage.getItem(SAVE_KEY));
+      } catch (err) {
+        data = null;
+      }
+      if (!data || !Array.isArray(data.map) || (data.map.length !== GRID_ROWS && data.map.length !== GRID_ROWS - EXP_ROWS * 2)) {
+        statusEl.textContent = '❌ 没有找到有效存档';
+        return;
+      }
+      const ROWS_OLD = data.map.length === GRID_ROWS - EXP_ROWS * 2;   // 旧版 48 行存档
+      for (let r = 0; r < GRID_ROWS; r++) {
+        if (ROWS_OLD) {
+          // 旧存档迁移：48 行主城平移到新的 12..59 行区间
+          map[r] = (r >= CITY_R0 && r < CITY_R1 && Array.isArray(data.map[r - CITY_R0]) && data.map[r - CITY_R0].length === GRID_COLS)
+            ? data.map[r - CITY_R0].slice()
+            : new Array(GRID_COLS).fill(TILE.EMPTY);
+        } else {
+          if (!Array.isArray(data.map[r]) || data.map[r].length !== GRID_COLS) {
+            statusEl.textContent = '❌ 存档数据损坏';
+            return;
+          }
+          map[r] = data.map[r].slice();
+        }
+      }
+      money = typeof data.money === 'number' ? data.money : 0;
+
+      // AI 部分（兼容旧存档：没有 AI 数据就留空重新发展）
+      if (Array.isArray(data.aiMap) && (data.aiMap.length === GRID_ROWS || data.aiMap.length === GRID_ROWS - EXP_ROWS * 2)) {
+        for (let r = 0; r < GRID_ROWS; r++) {
+          const srcR = ROWS_OLD ? r - CITY_R0 : r;
+          const hasRow = srcR >= 0 && srcR < data.aiMap.length && Array.isArray(data.aiMap[srcR]) && data.aiMap[srcR].length === GRID_COLS;
+          if (hasRow) {
+            aiMap[r] = data.aiMap[srcR].slice();
+            aiHp[r] = (Array.isArray(data.aiHp) && data.aiHp[srcR]) ? data.aiHp[srcR].slice() : new Array(GRID_COLS).fill(0);
+            aiOwner[r] = (Array.isArray(data.aiOwner) && data.aiOwner[srcR]) ? data.aiOwner[srcR].slice() : new Array(GRID_COLS).fill('ai');
+            aiCapture[r] = (Array.isArray(data.aiCapture) && data.aiCapture[srcR]) ? data.aiCapture[srcR].slice() : new Array(GRID_COLS).fill(0);
+          } else {
+            aiMap[r] = new Array(GRID_COLS).fill(TILE.EMPTY);
+            aiHp[r] = new Array(GRID_COLS).fill(0);
+            aiOwner[r] = new Array(GRID_COLS).fill('ai');
+            aiCapture[r] = new Array(GRID_COLS).fill(0);
+          }
+        }
+      }
+      // 扩展土地解锁状态
+      if (data.expLocked) {
+        expansions.north.locked = data.expLocked.north !== false;
+        expansions.south.locked = data.expLocked.south !== false;
+      } else {
+        expansions.north.locked = true;
+        expansions.south.locked = true;
+      }
+      lockGroups.north.visible = expansions.north.locked;
+      lockGroups.south.visible = expansions.south.locked;
+      aiMoney = typeof data.aiMoney === 'number' ? data.aiMoney : 3000;
+      aiScience = typeof data.aiScience === 'number' ? data.aiScience : 0;
+      food = typeof data.food === 'number' ? data.food : 0;
+      aiFood = typeof data.aiFood === 'number' ? data.aiFood : 0;
+      population = typeof data.population === 'number' ? data.population : 0;
+      sick = typeof data.sick === 'number' ? data.sick : 0;
+      govR = typeof data.govR === 'number' ? data.govR : -1;
+      govC = typeof data.govC === 'number' ? data.govC : -1;
+      govCapture = typeof data.govCapture === 'number' ? data.govCapture : 0;
+      govPlaced = data.govPlaced === true;
+      govPlaceMode = data.govPlaceMode !== false;
+      govWasOccupied = govCapture >= 1;
+
+      // 科技与教育
+      science = typeof data.science === 'number' ? data.science : 0;
+      graduates = typeof data.graduates === 'number' ? data.graduates : 0;
+      elites = typeof data.elites === 'number' ? data.elites : 0;
+      tuition = typeof data.tuition === 'number' ? data.tuition : 0;
+      tuitionSliderEl.value = String(tuition);
+      tuitionValueEl.textContent = `${tuition} 元`;
+      uniStudents.length = 0;
+      if (Array.isArray(data.uniStudents)) {
+        for (const u of data.uniStudents) {
+          uniStudents.push({ studied: typeof u.studied === 'number' ? u.studied : 0 });
+        }
+      }
+
+      undoStack.length = 0;
+      btnUndo.textContent = '⏪ 撤销';
+      rebuildAllTiles();
+      aiRebuildAllTiles();
+      if (govPlaced && govR >= 0 && govC >= 0) govGroupRef = tileMeshes[govR][govC];
+      statusEl.textContent = `📂 已读取存档（金钱 ${Math.round(money)} · AI 金钱 ${Math.round(aiMoney)}）`;
+    }
+
+    btnUndo.addEventListener('click', undo);
+    btnSave.addEventListener('click', saveGame);
+    btnLoad.addEventListener('click', loadGame);
+
+    // Ctrl+Z 撤销；Esc 取消选中士兵
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.code === 'KeyZ') {
+        e.preventDefault();
+        undo();
+      }
+      if (e.code === 'Escape') {
+        if (selectedSoldiers.size > 0) {
+          for (const x of selectedSoldiers) x.group.userData.ring.visible = false;
+          selectedSoldiers.clear();
+          statusEl.textContent = '已取消选中士兵';
+        }
+      }
+    });
+
+    // ========== 底部状态栏 ==========
+    let hoverCell = null;
+    function updateStatusText(cell) {
+      hoverCell = cell;
+      if (!cell) {
+        statusEl.textContent = selectedType === null
+          ? '未选择建筑类型：请点击“🏗️ 建筑”菜单选择；右键点击拆除建筑（半价回收）'
+          : DEFAULT_HINT;
+        return;
+      }
+      if (cell.side === 'ai') {
+        const t = aiMap[cell.r][cell.c];
+        const hp = aiHp[cell.r][cell.c] ?? 0;
+        statusEl.textContent = t === TILE.EMPTY
+          ? `对方领土 (${cell.c}, ${cell.r})：空地`
+          : `对方领土 (${cell.c}, ${cell.r})：${TILE_NAMES[t]}（HP ${hp}）`;
+        return;
+      }
+      if (selectedType === 'demolish' && cell.side === 'own' && map[cell.r][cell.c] !== TILE.EMPTY) {
+        const dr = Math.floor((BUILDING_COST[map[cell.r][cell.c]] ?? 0) / 2);
+        statusEl.textContent = `🧨 拆除模式：点击拆除${TILE_NAMES[map[cell.r][cell.c]]}${dr > 0 ? `（半价回收 ${dr} 元）` : ''}`;
+        return;
+      }
+      if (cell.side === 'own' && constructionMap[cell.r][cell.c]) {
+        const e = constructionMap[cell.r][cell.c];
+        statusEl.textContent = `🏗️ 建造中：${TILE_NAMES[e.type]} · 剩余 ${Math.ceil(e.remaining)} 秒`;
+        return;
+      }
+      if (cell.side === 'own' && isLockedRow(cell.r)) {
+        const lock = isLockedRow(cell.r);
+        statusEl.textContent = `🔒 ${lock.label}土地未解锁（${lock.cost} 元）：点击“🏗️ 建筑”菜单中的解锁按钮`;
+        return;
+      }
+      const tile = map[cell.r][cell.c];
+      let extra = '';
+      if (SHOP_TILES.has(tile)) {
+        const pop = nearbyPopulation(cell.r, cell.c);
+        const base = shopProfit(tile, cell.r, cell.c);
+        const supplied = isSupplied(cell.r, cell.c);
+        let actual = base * (supplied ? 1 + SUPPLY_BONUS : 1);
+        let note = supplied ? '，🏭已供货 ×1.5' : '，未供货';
+        if (tile === TILE.RESTAURANT && countTilesOf(TILE.FARM) === 0) {
+          actual *= 0.5;
+          note += '，🌾缺小麦盈利减半';
+        }
+        extra = `（周边人口 ${pop}，收入 +${actual.toFixed(1)} 元/10秒${note}）`;
+      }
+      if (tile === TILE.FARM) extra += '（产粮 2 单位/秒）';
+      if (tile === TILE.INDUSTRIAL) {
+        const served = Math.min(countShopsNearby(cell.r, cell.c), INDUSTRY_MAX_SHOPS);
+        extra = `（供货 ${served} 家店，+${served * INDUSTRY_SUPPLY_INCOME} 元/10秒）`;
+      }
+      if (tile === TILE.BARRACKS) extra += '（点击可全选军队并查看总兵力）';
+      // 电力信息
+      if (tile === TILE.SOLAR) extra += `（发电 ${SOLAR_OUTPUT} 单位）`;
+      if (tile === TILE.COAL) extra += `（发电 ${COAL_OUTPUT} 单位）`;
+      if ((POWER_USE[tile] || 0) > 0) extra += `（耗电 ${POWER_USE[tile]} 单位）`;
+      // 拆除可半价回收
+      const refund = Math.floor((BUILDING_COST[tile] ?? 0) / 2);
+      if (refund > 0) extra += ` · 拆除回收 ${refund} 元`;
+      // 悬停空地时预览放置条件（道路要求 + 费用）
+      if (tile === TILE.EMPTY && selectedType !== null) {
+        const cost = BUILDING_COST[selectedType] ?? 0;
+        const afford = money >= cost;
+        const canPlace = canPlaceAt(cell.r, cell.c, selectedType);
+        let msg = `格子 (${cell.c}, ${cell.r})：空地 → 放置${TILE_NAMES[selectedType]}`;
+        if (!canPlace) msg += '（❌ 需连接道路）';
+        else if (cost > 0) msg += `（造价 ${cost} 元${afford ? '' : ' ❌ 金钱不足'}）`;
+        statusEl.textContent = msg;
+        return;
+      }
+      statusEl.textContent = `格子 (${cell.c}, ${cell.r})：${TILE_NAMES[tile]}${extra}`;
+    }
+
+    // ========== 渲染循环 ==========
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+      moveCamera(dt);     // WASD 等按键移动相机
+      updateWalkers(dt);  // 居民在街头走动
+      updateShops(dt);         // 商铺收入 + 占领收益结算
+      updatePower(dt);         // 电力收支与对AI售电结算（每秒）
+      updateFood(dt);          // 食物收支结算（每秒）
+      updatePopulationGrowth(dt);   // 人口增长（饥荒时停止）
+      updateHealth(dt);        // 疾病与医院结算（每秒）
+      updateConstruction(dt);  // 建造过程推进
+      updateEducation(dt);     // 教育科技结算（每秒）
+      updateAISim(dt);         // AI 对手发展
+      updateSoldiers(dt);      // 我方军队移动/战斗/占领
+      updateAISoldiers(dt);    // AI 军队反击
+      updateGovState();        // 政府大楼占领状态
+      updateTrucks(dt);        // 工业运输卡车
+      updateArmyEconomy(dt);   // 军费结算（每秒）
+      updateHUD(dt);           // 顶部常驻栏与数据菜单刷新
+      updateAutoSave(dt);      // 自动存档（每 60 秒）
+      updateSupplyMarkers(clock.elapsedTime);   // 供货标记亮起与浮动
+      updateFloatTexts(dt);                     // 飘字动画
+      applyCamera();      // 刷新相机位置
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // 开局：自选政府大楼位置
+    if (govPlaceMode) {
+      showError('🏛️ 请选择政府大楼位置');
+      statusEl.textContent = '🏛️ 请先在地图上选择政府大楼的位置（3×3 开阔空地）';
+    }
+  </script>
+  <!-- 模组目录：把你的模组文件加在这里（每个模组一行） -->
+  <script src="js/mods/example-mod.js"></script>
+</body>
+</html>

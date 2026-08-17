@@ -1,0 +1,15 @@
+# 开发工具与密钥（不进仓库）
+tools/
+zhipu_key.txt
+vision.mjs
+download_libs.mjs
+test_image.png
+
+# 系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
