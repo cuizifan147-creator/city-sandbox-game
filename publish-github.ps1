@@ -15,14 +15,16 @@ Write-Host '  发布 City3D 到 GitHub'
 Write-Host '============================================'
 
 # 1. GitHub 用户名
-$username = Read-Host '你的 GitHub 用户名（例：zhangsan）'
+$username = Read-Host '你的 GitHub 用户名（本机默认：cuizifan147-creator）'
 if (-not $username -or $username -match '\s') {
   Write-Host '✖ 用户名不能为空或含空格' -ForegroundColor Red
   exit 1
 }
 
 # 2. 若提交作者还是占位身份，改为你的 GitHub 身份
-$email = "$username@users.noreply.github.com"
+# GitHub 新账号的隐私邮箱格式：<数字ID>+<用户名>@users.noreply.github.com
+$ghId = '297203046'
+$email = "$ghId+$username@users.noreply.github.com"
 $curEmail = & $git config user.email
 if ($curEmail -like '*city3d-dev*') {
   & $git config user.name $username
