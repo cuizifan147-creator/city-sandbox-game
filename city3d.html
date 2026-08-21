@@ -33,6 +33,7 @@
     @media (pointer: coarse) {
       .menu-btn { padding: 12px 20px; font-size: 16px; }
       .tool-btn, .army-btn { padding: 14px 22px; font-size: 16px; }
+      #build-panel .tool-btn, #build-panel .army-btn { flex: 1 1 100%; }
       #topbar { gap: 10px; padding: 10px; }
       #status { font-size: 12px; max-width: 94%; }
       .panel { max-height: 62vh; overflow-y: auto; }
@@ -110,10 +111,33 @@
 
     #build-panel {
       display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: center;
+      flex-direction: column;
+      gap: 8px;
+      width: 560px;
       max-width: 96%;
+      max-height: 72vh;
+      overflow-y: auto;
+    }
+
+    .build-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .build-group-title {
+      width: 100%;
+      font-size: 12px;
+      letter-spacing: 1px;
+      color: #64748b;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 2px;
+      margin-bottom: 2px;
+    }
+
+    #build-panel .tool-btn,
+    #build-panel .army-btn {
+      flex: 1 1 46%;
     }
 
     #data-panel {
@@ -318,27 +342,45 @@
   <!-- 3D 场景容器：画布铺满 + 菜单/状态栏悬浮其上 -->
   <div id="game">
 
-  <!-- 建筑菜单（点击“🏗️ 建筑”展开）：住宅/店铺/工业/道路等全部聚集在这里 -->
+  <!-- 建筑菜单（点击“🏗️ 建筑”展开）：按类别分组，两列紧凑排列 -->
   <div id="build-panel" class="panel hidden">
-    <button id="btn-road"        class="tool-btn selected" data-type="1">🛣️ 道路</button>
-    <button id="btn-gov"         class="tool-btn" data-type="14">🏛️ 政府大楼</button>
-    <button id="btn-residential" class="tool-btn" data-type="2">🏠 住宅区</button>
-    <button id="btn-market"      class="tool-btn" data-type="3">🛒 小型超市</button>
-    <button id="btn-restaurant"  class="tool-btn" data-type="7">🍜 饭店</button>
-    <button id="btn-clothing"    class="tool-btn" data-type="8">👗 服装店</button>
-    <button id="btn-industrial"  class="tool-btn" data-type="4">🏭 工业区</button>
-    <button id="btn-solar"       class="tool-btn" data-type="5">☀️ 太阳能板</button>
-    <button id="btn-coal"        class="tool-btn" data-type="6">🔥 火力发电站</button>
-    <button id="btn-barracks"    class="tool-btn" data-type="9">🎖️ 军营</button>
-    <button id="btn-school"      class="tool-btn" data-type="10">🏫 初级学堂</button>
-    <button id="btn-university"  class="tool-btn" data-type="11">🎓 大学</button>
-    <button id="btn-farm"        class="tool-btn" data-type="13">🌾 小麦农场</button>
-    <button id="btn-hospital"    class="tool-btn" data-type="16">🏥 医院</button>
-    <button id="btn-wall"        class="tool-btn" data-type="17">🧱 围墙</button>
-    <button id="btn-unlock-north" class="army-btn" style="background:#0e7490">🔓 北侧土地（2000元）</button>
-    <button id="btn-unlock-south" class="army-btn" style="background:#0e7490">🔓 南侧土地（2500元）</button>
-    <button id="btn-demolish"    class="tool-btn" data-type="demolish">🧨 拆除</button>
-    <button id="btn-none"        class="tool-btn" data-type="0">🚫 取消选择</button>
+    <div class="build-group">
+      <div class="build-group-title">🚧 基础建设</div>
+      <button id="btn-road"        class="tool-btn selected" data-type="1">🛣️ 道路</button>
+      <button id="btn-residential" class="tool-btn" data-type="2">🏠 住宅区</button>
+      <button id="btn-gov"         class="tool-btn" data-type="14">🏛️ 政府大楼</button>
+    </div>
+    <div class="build-group">
+      <div class="build-group-title">🛒 商业</div>
+      <button id="btn-market"      class="tool-btn" data-type="3">🛒 小型超市</button>
+      <button id="btn-restaurant"  class="tool-btn" data-type="7">🍜 饭店</button>
+      <button id="btn-clothing"    class="tool-btn" data-type="8">👗 服装店</button>
+    </div>
+    <div class="build-group">
+      <div class="build-group-title">⚙️ 生产与能源</div>
+      <button id="btn-industrial"  class="tool-btn" data-type="4">🏭 工业区</button>
+      <button id="btn-farm"        class="tool-btn" data-type="13">🌾 小麦农场</button>
+      <button id="btn-solar"       class="tool-btn" data-type="5">☀️ 太阳能板</button>
+      <button id="btn-coal"        class="tool-btn" data-type="6">🔥 火力发电站</button>
+    </div>
+    <div class="build-group">
+      <div class="build-group-title">⚔️ 军事</div>
+      <button id="btn-barracks"    class="tool-btn" data-type="9">🎖️ 军营</button>
+      <button id="btn-wall"        class="tool-btn" data-type="17">🧱 围墙</button>
+    </div>
+    <div class="build-group">
+      <div class="build-group-title">🎓 教育与医疗</div>
+      <button id="btn-school"      class="tool-btn" data-type="10">🏫 初级学堂</button>
+      <button id="btn-university"  class="tool-btn" data-type="11">🎓 大学</button>
+      <button id="btn-hospital"    class="tool-btn" data-type="16">🏥 医院</button>
+    </div>
+    <div class="build-group">
+      <div class="build-group-title">🔧 工具</div>
+      <button id="btn-demolish"    class="tool-btn" data-type="demolish">🧨 拆除</button>
+      <button id="btn-none"        class="tool-btn" data-type="0">🚫 取消选择</button>
+      <button id="btn-unlock-north" class="army-btn" style="background:#0e7490">🔓 北侧土地（2000元）</button>
+      <button id="btn-unlock-south" class="army-btn" style="background:#0e7490">🔓 南侧土地（2500元）</button>
+    </div>
   </div>
 
   <!-- 数据菜单（点击“📊 数据”展开） -->
