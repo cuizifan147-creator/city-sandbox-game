@@ -5,6 +5,10 @@ vision.mjs
 download_libs.mjs
 test_image.png
 
+# 打包产物（本地分发用，不进仓库）
+release/
+.dsh-bins/
+
 # 系统文件
 Thumbs.db
 .DS_Store
