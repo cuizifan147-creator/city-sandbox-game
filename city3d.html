@@ -388,6 +388,8 @@
 
   <!-- 本地库文件（r128 UMD 版，file:// 直接可用，无需联网） -->
   <script src="lib/three.min.js"></script>
+  <!-- CC0 素材（Poly Haven 天空 + AmbientCG 地面，base64 内嵌保持单文件双击可玩） -->
+  <script src="js/assets.js"></script>
   <!-- 模组 API（必须在游戏主体脚本之前加载） -->
   <script src="js/game-api.js"></script>
   <script>
@@ -488,8 +490,18 @@
     // ========== 3D 场景 ==========
     const container = document.getElementById('game');
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x8ecae6);   // 明亮的白天天空
-    scene.fog = new THREE.Fog(0x9ecbe0, 700, 3000);   // 雾与天空同色，远景自然融入
+    scene.background = new THREE.Color(0x8ecae6);   // 明亮的白天天空（无素材时的回退值）
+    scene.fog = new THREE.Fog(0xb9d2e6, 700, 3000);   // 雾色贴近天空照片地平线，远景自然融入
+
+    // 天空：优先使用 CC0 天空照片（Poly Haven，等距柱状投影全景）
+    if (window.CITY3D_ASSETS && window.CITY3D_ASSETS.sky) {
+      try {
+        const skyTex = new THREE.TextureLoader().load(window.CITY3D_ASSETS.sky);
+        skyTex.mapping = THREE.EquirectangularReflectionMapping;
+        skyTex.encoding = THREE.sRGBEncoding;
+        scene.background = skyTex;
+      } catch (e) { /* 素材加载失败保持纯色天空 */ }
+    }
 
     const camera = new THREE.PerspectiveCamera(45, 1, 1, 4000);
     camera.position.set(100, 160, 200);
@@ -554,28 +566,51 @@
       return tex;
     }
 
-    // 我方地面：草地 + 泥土（鼠标拾取目标平面之一）
+    // CC0 地面贴图加载（AmbientCG）：像素风滤镜 + 平铺；缺失时回退程序化噪点
+    function loadAssetGround(uri, repeatX, repeatY) {
+      const tex = new THREE.TextureLoader().load(uri);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.magFilter = THREE.NearestFilter;            // 像素风：放大保持方块感
+      tex.minFilter = THREE.NearestMipmapLinearFilter; // 远景防闪烁
+      tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    // 我方地面：CC0 草地贴图（回退：像素噪点草地 + 泥土）
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(GRID_COLS * CELL, GRID_ROWS * CELL),
-      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#7fb069', '#8fbc6f', '#6d9e57', '#a8804f', '#96744a']) })
+      new THREE.MeshLambertMaterial({
+        map: (window.CITY3D_ASSETS && window.CITY3D_ASSETS.grass)
+          ? loadAssetGround(window.CITY3D_ASSETS.grass, GRID_COLS / 2, GRID_ROWS / 2)
+          : makeGroundTexture(['#7fb069', '#8fbc6f', '#6d9e57', '#a8804f', '#96744a']),
+      })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.set((GRID_COLS * CELL) / 2, 0, (GRID_ROWS * CELL) / 2);
     scene.add(ground);
 
-    // AI 地面：更干旱的土色（表示对方领土）
+    // AI 地面：CC0 泥土贴图（表示对方领土；回退：更干旱的土色噪点）
     const aiGround = new THREE.Mesh(
       new THREE.PlaneGeometry(GRID_COLS * CELL, GRID_ROWS * CELL),
-      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#b8956a', '#a8804f', '#c0a068', '#8f6f47', '#9c7b52']) })
+      new THREE.MeshLambertMaterial({
+        map: (window.CITY3D_ASSETS && window.CITY3D_ASSETS.dirt)
+          ? loadAssetGround(window.CITY3D_ASSETS.dirt, GRID_COLS / 2, GRID_ROWS / 2)
+          : makeGroundTexture(['#b8956a', '#a8804f', '#c0a068', '#8f6f47', '#9c7b52']),
+      })
     );
     aiGround.rotation.x = -Math.PI / 2;
     aiGround.position.set(AI_OFFSET_X + (GRID_COLS * CELL) / 2, 0, (GRID_ROWS * CELL) / 2);
     scene.add(aiGround);
 
-    // 外层大地：包裹全部可玩区域与视野，永远看不到虚空
+    // 外层大地：包裹全部可玩区域与视野，永远看不到虚空（优先草地贴图高密度平铺）
     const outerTerrain = new THREE.Mesh(
       new THREE.PlaneGeometry(5000, 5000),
-      new THREE.MeshLambertMaterial({ map: makeGroundTexture(['#8fbc6f', '#7fb069', '#6d9e57', '#a8804f', '#96744a']) })
+      new THREE.MeshLambertMaterial({
+        map: (window.CITY3D_ASSETS && window.CITY3D_ASSETS.grass)
+          ? loadAssetGround(window.CITY3D_ASSETS.grass, 90, 90)
+          : makeGroundTexture(['#8fbc6f', '#7fb069', '#6d9e57', '#a8804f', '#96744a']),
+      })
     );
     outerTerrain.material.map.repeat.set(90, 90);
     outerTerrain.rotation.x = -Math.PI / 2;

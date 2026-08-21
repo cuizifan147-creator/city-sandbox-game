@@ -90,3 +90,8 @@ GameMod.events.on('placed', (p) => {
 ## 📄 许可证
 
 MIT（详见 [LICENSE](LICENSE)）。`lib/three.min.js` 为 Three.js r128，同样 MIT 许可。
+
+🎨 **美术素材**（均为 CC0 公有领域，可免费商用、无需署名）：
+- 天空照片：[Poly Haven](https://polyhaven.com) — `kloofendal_48d_partly_cloudy_puresky`
+- 地面贴图：[AmbientCG](https://ambientcg.com) — `Grass001`（草地）、`Ground022`（泥土）
+- 素材以 base64 内嵌在 `js/assets.js`，保持单文件双击可玩；删除该文件会自动回退到程序化像素纹理。
