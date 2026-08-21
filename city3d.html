@@ -4022,24 +4022,37 @@
     // ========== 工具栏与菜单 ==========
     const buildPanelEl = document.getElementById('build-panel');
     const dataPanelEl = document.getElementById('data-panel');
+    const armyPanelEl = document.getElementById('army-panel');
+    const eduPanelEl = document.getElementById('edu-panel');
     const btnMenuBuild = document.getElementById('btn-menu-build');
     const btnMenuData = document.getElementById('btn-menu-data');
-    btnMenuBuild.addEventListener('click', () => {
-      buildPanelEl.classList.toggle('hidden');
-      btnMenuBuild.classList.toggle('active');
-    });
-    btnMenuData.addEventListener('click', () => {
-      dataPanelEl.classList.toggle('hidden');
-      btnMenuData.classList.toggle('active');
+    const btnMenuArmy = document.getElementById('btn-menu-army');
+    const btnMenuEdu = document.getElementById('btn-menu-edu');
+
+    // 菜单互斥：点击一个选项时自动关闭其他已打开的面板（修复画面重叠 bug）
+    const menuDefs = [
+      { btn: btnMenuBuild, panel: buildPanelEl },
+      { btn: btnMenuData, panel: dataPanelEl },
+      { btn: btnMenuArmy, panel: armyPanelEl },
+      { btn: btnMenuEdu, panel: eduPanelEl },
+    ];
+    function closeAllMenus() {
+      menuDefs.forEach((m) => {
+        m.panel.classList.add('hidden');
+        m.btn.classList.remove('active');
+      });
+    }
+    menuDefs.forEach((m) => {
+      m.btn.addEventListener('click', () => {
+        const willOpen = m.panel.classList.contains('hidden');
+        closeAllMenus();
+        if (willOpen) {
+          m.panel.classList.remove('hidden');
+          m.btn.classList.add('active');
+        }
+      });
     });
 
-    // 🎖️ 军队菜单
-    const armyPanelEl = document.getElementById('army-panel');
-    const btnMenuArmy = document.getElementById('btn-menu-army');
-    btnMenuArmy.addEventListener('click', () => {
-      armyPanelEl.classList.toggle('hidden');
-      btnMenuArmy.classList.toggle('active');
-    });
     document.getElementById('btn-recruit').addEventListener('click', recruitSoldier);
     document.getElementById('btn-recruit-tank').addEventListener('click', recruitTank);
 
@@ -4122,13 +4135,7 @@
     // 首次游玩自动开始（玩家主动跳过后不再弹出）
     if (localStorage.getItem(TUTORIAL_KEY) !== '1') showTutorial();
 
-    // 🎓 教育菜单与学费滑块
-    const eduPanelEl = document.getElementById('edu-panel');
-    const btnMenuEdu = document.getElementById('btn-menu-edu');
-    btnMenuEdu.addEventListener('click', () => {
-      eduPanelEl.classList.toggle('hidden');
-      btnMenuEdu.classList.toggle('active');
-    });
+    // 🎓 教育菜单学费滑块（面板互斥逻辑已在上方统一处理）
     const tuitionSliderEl = document.getElementById('tuition-slider');
     const tuitionValueEl = document.getElementById('tuition-value');
     tuitionSliderEl.addEventListener('input', () => {
